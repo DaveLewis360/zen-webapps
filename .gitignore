@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.coverage
+/runtime.lock.json
+.mypy_cache/
+.pytest_cache/
+# Staging directories left behind by interrupted opt-in native candidate tests.
+/.real-*-candidate-*/

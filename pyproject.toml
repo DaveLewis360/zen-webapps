@@ -1,0 +1,17 @@
+[build-system]
+requires = []
+build-backend = "zen_app_runtime.build_backend"
+backend-path = ["src"]
+
+[project]
+name = "zen-app-runtime"
+version = "0.1.0"
+description = "Manifest and app-definition manager for isolated Zen site-specific apps"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+zen-app = "zen_app_runtime.cli:main"
+
+[tool.unittest]
+start-directory = "tests"

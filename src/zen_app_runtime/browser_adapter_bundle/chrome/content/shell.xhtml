@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
+<?xml-stylesheet href="chrome://zenappshell/content/shell.css" type="text/css"?>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        id="zen-app-shell-window"
+        title="Zen App Shell"
+        windowtype="zen-app-runtime:shell"
+        role="application"
+        transparent="true"
+        drawintitlebar="true"
+        chromemargin="0,0,0,0"
+        width="1120"
+        height="780"
+        style="background: transparent; -moz-appearance: none;">
+  <script src="chrome://zenappshell/content/shell.js"/>
+
+  <keyset id="app-shell-keyset">
+    <key id="key-close" key="w" modifiers="accel"/>
+    <key id="key-security" key="l" modifiers="accel"/>
+    <key id="key-hide-chrome" keycode="VK_ESCAPE"/>
+    <key id="key-back" keycode="VK_LEFT" modifiers="alt"/>
+    <key id="key-forward" keycode="VK_RIGHT" modifiers="alt"/>
+    <key id="key-reload" key="r" modifiers="accel"/>
+    <key id="key-reload-bypass" key="r" modifiers="accel,shift"/>
+    <key id="key-block-window" key="n" modifiers="accel"/>
+    <key id="key-block-tab" key="t" modifiers="accel"/>
+    <key id="key-block-restore-tab" key="t" modifiers="accel,shift"/>
+    <key id="key-block-devtools" key="i" modifiers="accel,shift"/>
+    <key id="key-block-browser-console" key="j" modifiers="accel,shift"/>
+    <key id="key-block-private" key="p" modifiers="accel,shift"/>
+    <key id="key-block-location" keycode="VK_F6"/>
+    <key id="key-block-fullscreen" keycode="VK_F11"/>
+    <key id="key-block-devtools-f12" keycode="VK_F12"/>
+  </keyset>
+
+  <stack id="app-shell" flex="1">
+    <vbox id="content-browser-host"
+          flex="1"
+          style="background: transparent; -moz-appearance: none;"/>
+
+    <vbox id="onboarding" class="chrome-page onboarding-page" align="center" pack="center">
+      <html:div class="ambient ambient-one"></html:div>
+      <html:div class="ambient ambient-two"></html:div>
+      <html:main class="onboarding-card" aria-labelledby="onboarding-title">
+        <html:section class="onboarding-identity">
+          <html:div id="onboarding-icon" class="app-mark" aria-hidden="true">S</html:div>
+          <html:div>
+            <html:p class="eyebrow">PROTECTED APP LAUNCH</html:p>
+            <html:h1 id="onboarding-title">Open <html:span id="onboarding-name">this app</html:span></html:h1>
+            <html:p class="intro">A clean, isolated Zen session is ready. The website has not been requested yet.</html:p>
+          </html:div>
+        </html:section>
+
+        <html:section class="origin-card" aria-label="Verified destination">
+          <html:div class="lock-orb" aria-hidden="true">✓</html:div>
+          <html:div class="origin-copy">
+            <html:span>Verified HTTPS origin</html:span>
+            <html:strong id="onboarding-origin">Waiting for verified policy</html:strong>
+          </html:div>
+          <html:span class="not-loaded-badge">Not loaded</html:span>
+        </html:section>
+
+        <html:div class="assurance-grid">
+          <html:div><html:strong>Isolated profile</html:strong><html:span>No default-browser import</html:span></html:div>
+          <html:div><html:strong>Focused window</html:strong><html:span>No tabs, sidebar or address editor</html:span></html:div>
+          <html:div><html:strong>Controlled sign-in</html:strong><html:span>Every temporary login origin needs confirmation</html:span></html:div>
+        </html:div>
+
+        <html:footer class="onboarding-actions">
+          <html:div class="appearance-summary">
+            <html:span class="appearance-dot"></html:span>
+            <html:span id="onboarding-appearance">Glass chrome</html:span>
+            <html:small id="onboarding-app-id">Waiting for policy</html:small>
+          </html:div>
+          <html:button id="continue-button" class="primary launch-button" type="button" disabled="disabled">Open securely</html:button>
+        </html:footer>
+      </html:main>
+    </vbox>
+
+    <vbox id="security-panel" class="chrome-overlay" align="center" pack="start" hidden="true">
+      <html:section class="dialog-card detail-card" role="dialog" aria-labelledby="security-panel-title">
+        <html:p class="eyebrow">SECURITY &amp; ORIGIN</html:p>
+        <html:h2 id="security-panel-title">Protected app boundary</html:h2>
+        <html:dl class="security-details">
+          <html:div><html:dt>Current origin</html:dt><html:dd id="panel-current-origin">No site loaded</html:dd></html:div>
+          <html:div><html:dt>App origin</html:dt><html:dd id="panel-allowed-origin">Unknown</html:dd></html:div>
+          <html:div><html:dt>Connection</html:dt><html:dd id="panel-connection">No connection</html:dd></html:div>
+          <html:div><html:dt>Permissions</html:dt><html:dd id="panel-permission-state">No request is pending</html:dd></html:div>
+          <html:div><html:dt>Downloads</html:dt><html:dd id="panel-download-state">Privileged confirmation required</html:dd></html:div>
+          <html:div><html:dt>Screen capture</html:dt><html:dd id="panel-portal-state">Wayland portal required</html:dd></html:div>
+          <html:div><html:dt>Chrome</html:dt><html:dd>Reveal at the top edge or press Ctrl+L</html:dd></html:div>
+        </html:dl>
+        <html:button id="security-panel-close" class="primary" type="button">Done</html:button>
+      </html:section>
+    </vbox>
+
+    <vbox id="auth-panel" class="chrome-overlay" align="center" pack="center" hidden="true">
+      <html:section class="dialog-card auth-card" role="dialog" aria-labelledby="auth-panel-title">
+        <html:div class="dialog-symbol auth-symbol" aria-hidden="true">↗</html:div>
+        <html:p class="eyebrow">CONTROLLED SIGN-IN</html:p>
+        <html:h2 id="auth-panel-title">Continue to <html:span id="auth-host">the sign-in service</html:span>?</html:h2>
+        <html:p class="dialog-lead">This exact HTTPS origin will be pinned only for the current sign-in. It may return only to an already trusted origin.</html:p>
+        <html:dl class="auth-route">
+          <html:div><html:dt>Temporary origin</html:dt><html:dd id="auth-origin">Unknown</html:dd></html:div>
+          <html:div><html:dt>Allowed return</html:dt><html:dd id="auth-return-origin">Unknown</html:dd></html:div>
+        </html:dl>
+        <html:details class="target-details">
+          <html:summary>Show exact destination</html:summary>
+          <html:code id="auth-target"></html:code>
+        </html:details>
+        <html:div class="button-row">
+          <html:button id="auth-cancel" type="button">Stay in app</html:button>
+          <html:button id="auth-continue" class="primary" type="button">Continue to sign in</html:button>
+        </html:div>
+      </html:section>
+    </vbox>
+
+    <vbox id="external-panel" class="chrome-overlay" align="center" pack="center" hidden="true">
+      <html:section class="dialog-card detail-card" role="dialog" aria-labelledby="external-panel-title">
+        <html:div class="dialog-symbol" aria-hidden="true">↗</html:div>
+        <html:p class="eyebrow">LEAVING THE APP</html:p>
+        <html:h2 id="external-panel-title">Open in the system browser?</html:h2>
+        <html:p id="external-reason" class="dialog-lead">This destination is outside the app boundary.</html:p>
+        <html:code id="external-target" class="exact-target"></html:code>
+        <html:div class="button-row">
+          <html:button id="external-cancel" type="button">Cancel</html:button>
+          <html:button id="external-open" class="primary" type="button">Open externally</html:button>
+        </html:div>
+      </html:section>
+    </vbox>
+
+    <vbox id="permission-panel" class="chrome-overlay" align="center" pack="center" hidden="true">
+      <html:section class="dialog-card mediation-card" role="dialog" aria-labelledby="permission-panel-title">
+        <html:div class="dialog-symbol permission-symbol" aria-hidden="true">●</html:div>
+        <html:p class="eyebrow">ONE-SHOT PERMISSION</html:p>
+        <html:h2 id="permission-panel-title">Allow <html:span id="permission-kind">this request</html:span>?</html:h2>
+        <html:p class="dialog-lead">The request is bound to the current origin and document. No decision is written as a persistent site grant.</html:p>
+        <html:dl class="mediation-details">
+          <html:div><html:dt>Exact origin</html:dt><html:dd id="permission-origin">Unknown</html:dd></html:div>
+          <html:div><html:dt>Lifetime</html:dt><html:dd id="permission-lifetime">One request only</html:dd></html:div>
+          <html:div><html:dt>System consent</html:dt><html:dd id="permission-portal-state">Not applicable</html:dd></html:div>
+        </html:dl>
+        <html:div class="device-grid" aria-label="Requested media sources">
+          <html:label id="permission-camera-row" hidden="true">Camera<html:select id="permission-camera-device"></html:select></html:label>
+          <html:label id="permission-microphone-row" hidden="true">Microphone<html:select id="permission-microphone-device"></html:select></html:label>
+          <html:label id="permission-shared-audio-row" hidden="true">Shared audio<html:select id="permission-shared-audio-device"></html:select></html:label>
+          <html:label id="permission-speaker-row" hidden="true">Audio output<html:select id="permission-speaker-device"></html:select></html:label>
+          <html:label id="permission-screen-row" hidden="true">Screen or window<html:select id="permission-screen-device"></html:select></html:label>
+        </html:div>
+        <html:div class="boundary-note">Screen capture on Wayland proceeds only with transient activation and xdg-desktop-portal consent. Stopping or restarting always requires a new request.</html:div>
+        <html:div class="button-row">
+          <html:button id="permission-deny" type="button">Deny</html:button>
+          <html:button id="permission-allow" class="primary" type="button">Allow once</html:button>
+        </html:div>
+      </html:section>
+    </vbox>
+
+    <vbox id="download-panel" class="chrome-overlay" align="center" pack="center" hidden="true">
+      <html:section class="dialog-card mediation-card" role="dialog" aria-labelledby="download-panel-title">
+        <html:div class="dialog-symbol download-symbol" aria-hidden="true">↓</html:div>
+        <html:p class="eyebrow">CONTROLLED DOWNLOAD</html:p>
+        <html:h2 id="download-panel-title">Save this file?</html:h2>
+        <html:p class="dialog-lead">Confirmation does not choose a hidden default path. A system Save picker opens next, and the file is never launched automatically.</html:p>
+        <html:dl class="mediation-details">
+          <html:div><html:dt>Exact origin</html:dt><html:dd id="download-origin">Unknown</html:dd></html:div>
+          <html:div><html:dt>Suggested name</html:dt><html:dd id="download-name">download</html:dd></html:div>
+          <html:div><html:dt>Content type</html:dt><html:dd id="download-type">Unknown file type</html:dd></html:div>
+          <html:div><html:dt>Destination</html:dt><html:dd>System file picker; no silent default directory</html:dd></html:div>
+        </html:dl>
+        <html:div class="button-row">
+          <html:button id="download-cancel" type="button">Cancel</html:button>
+          <html:button id="download-save" class="primary" type="button">Choose destination…</html:button>
+        </html:div>
+      </html:section>
+    </vbox>
+
+    <vbox id="fatal-error" class="chrome-page fatal-page" align="center" pack="center" hidden="true">
+      <html:main class="dialog-card detail-card" role="alert">
+        <html:p class="eyebrow error">STARTUP BLOCKED</html:p>
+        <html:h1>App Shell verification failed</html:h1>
+        <html:p id="fatal-error-message">No website content was loaded.</html:p>
+      </html:main>
+    </vbox>
+
+    <button id="chrome-reveal-button"
+            class="chrome-reveal-button"
+            label=""
+            hidden="true"
+            tooltiptext="Show app controls (Ctrl+L)"/>
+
+    <hbox id="security-bar" class="floating-chrome" align="center" hidden="true">
+      <button id="back-button" class="chrome-icon" label="←" disabled="true" tooltiptext="Back (Alt+Left)"/>
+      <button id="forward-button" class="chrome-icon" label="→" disabled="true" tooltiptext="Forward (Alt+Right)"/>
+      <button id="reload-button" class="chrome-icon" label="↻" disabled="true" tooltiptext="Reload (Ctrl+R)"/>
+      <button id="security-button" class="identity-button" flex="1" tooltiptext="Show origin and connection details">
+        <hbox align="center" flex="1">
+          <label id="security-glyph" class="security-glyph" value="✓"/>
+          <vbox class="identity-copy" flex="1">
+            <label id="origin-indicator" class="origin-indicator" value="No site loaded" crop="center"/>
+            <label id="security-state" class="security-state" value="Preparing secure shell" crop="end"/>
+          </vbox>
+        </hbox>
+      </button>
+      <button id="permission-button" class="chrome-chip" label="Ask" tooltiptext="Permissions prompt; no silent grants"/>
+      <button id="hide-chrome-button" class="chrome-icon" label="⌃" tooltiptext="Hide controls"/>
+      <button id="close-button" class="chrome-icon close-button" label="×" tooltiptext="Close app (Ctrl+W)"/>
+    </hbox>
+  </stack>
+</window>

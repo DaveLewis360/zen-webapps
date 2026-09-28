@@ -1,0 +1,106 @@
+{
+  "artifacts": {
+    "checksums": {
+      "filename": "SHA256SUMS",
+      "sha256": "4ee9baf4a53540528dd0707da2f33e8a59bf392288bcfd727eec30b8d5eec322",
+      "size": 543852,
+      "url": "https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS"
+    },
+    "checksumsSignature": {
+      "filename": "SHA256SUMS.asc",
+      "sha256": "c3acbb42db8456a39a481d398648ac2ce213d12700a4ed15daa24b52e7242bb5",
+      "size": 833,
+      "url": "https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS.asc"
+    },
+    "runtimeArchive": {
+      "checksumPath": "linux-x86_64/en-US/firefox-154.0.tar.xz",
+      "filename": "firefox-154.0.tar.xz",
+      "sha256": "7665cd49ab13417270748325838e565136adbc76d41bbd76fb24d15a0cc7792b",
+      "sha512": "0e57c27d947a78f88b5d9d3407e67b67316a41b82f747cddcee15f71f5e80691fc9be488f98e8bb6cca183739f953e2e09dc5429ec030fbe4b8060886dafdf62",
+      "size": 87056504,
+      "url": "https://archive.mozilla.org/pub/firefox/releases/154.0/linux-x86_64/en-US/firefox-154.0.tar.xz"
+    },
+    "signingKey": {
+      "filename": "KEY",
+      "sha256": "b0c538f0f145fa902ac55455d92d4e9a627c2c6865d79c81b280bcb55d75b798",
+      "size": 31916,
+      "url": "https://archive.mozilla.org/pub/firefox/releases/154.0/KEY"
+    },
+    "sourceArchive": {
+      "checksumPath": "source/firefox-154.0.source.tar.xz",
+      "filename": "firefox-154.0.source.tar.xz",
+      "sha256": "36cec5b3688a60f78a6d20dcaee15b598f84e03c66f6587056aead6cb498b99a",
+      "sha512": "a77cd664982add628681167ef5939bd6bf0c894aa380cca66f9b5fb265947874d1e819d42264f1dd07c843f8a6dc020da268cca9ff1e064fca019de91af9b996",
+      "size": 811370872,
+      "url": "https://archive.mozilla.org/pub/firefox/releases/154.0/source/firefox-154.0.source.tar.xz"
+    }
+  },
+  "candidate": {
+    "archiveRoot": "firefox",
+    "buildId": "20260812182057",
+    "candidateId": "firefox-154.0-linux-x86_64-en-US",
+    "executable": {
+      "mode": "0755",
+      "path": "firefox",
+      "sha256": "2c88c89ffb805b006f77aac7a94f84b524ea8affeeaef3f4c758cc427fc94820",
+      "size": 5520
+    },
+    "fileCount": 53,
+    "locale": "en-US",
+    "product": "Firefox",
+    "target": "linux-x86_64",
+    "totalBytes": 329408396,
+    "treeSha256": "52c63263f1488d75ea0819138fad02c23edad360e1396751ee3c957fd960c2b0",
+    "version": "154.0"
+  },
+  "geckoRuntimeSourceLockVersion": 1,
+  "release": {
+    "releaseRoot": "https://archive.mozilla.org/pub/firefox/releases/154.0/",
+    "signature": {
+      "hashAlgorithm": "SHA512",
+      "primaryFingerprint": "14F26682D0916CDD81E37B6D61B7B526D98F0353",
+      "publicKeyAlgorithm": "RSA",
+      "signatureDate": "2026-08-12",
+      "signatureTimestamp": 1786576198,
+      "signerUid": "Mozilla Software Releases <release@mozilla.com>",
+      "signingFingerprint": "827E658608679618CD349F93678E455D76767AA3"
+    },
+    "sourceRepository": "https://hg.mozilla.org/releases/mozilla-release",
+    "sourceStamp": "9ce1ee6baeb9a3c326dbd180bdece65d8fc2eadc"
+  },
+  "source": {
+    "archiveRoot": "firefox-154.0",
+    "buildStatus": "not-performed",
+    "metadata": [
+      {
+        "path": "browser/config/version.txt",
+        "sha256": "80f5248ec6c23b912d2f5973134e0c789629867e249fa1c430f456887a3b40d9",
+        "size": 6
+      },
+      {
+        "path": "browser/config/version_display.txt",
+        "sha256": "80f5248ec6c23b912d2f5973134e0c789629867e249fa1c430f456887a3b40d9",
+        "size": 6
+      },
+      {
+        "path": "config/milestone.txt",
+        "sha256": "e96707f45f1d956dd871f560252c45c67002a4d4b1ed099f0310969612da7e74",
+        "size": 332
+      },
+      {
+        "path": "sourcestamp.txt",
+        "sha256": "f3991341c90b72d73bf44b325df4aac181a103b2f165cf9eecd2bfcdf65e43d9",
+        "size": 107
+      }
+    ],
+    "reproducibilityStatus": "not-tested",
+    "toolchainSnapshot": {
+      "clang": "22.1.8",
+      "cmake": "4.4.2",
+      "ninja": "1.13.2",
+      "purpose": "future-source-build-input-snapshot",
+      "rustc": "1.98.0",
+      "target": "x86_64-unknown-linux-gnu"
+    }
+  }
+}

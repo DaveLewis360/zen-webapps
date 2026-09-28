@@ -1,0 +1,151 @@
+/*
+ * Discord transparency theme adapted for Zen App Runtime from:
+ *   Zen Internet / my-internet, websites/+discord.com.css
+ *   https://github.com/sameerasw/my-internet
+ * Pinned upstream commit: f3a6453942894205c8644c5b0aefb502706a462e
+ * Upstream blob: 39c87bd3417d6c52f61201b5ce0cfa9bc72cf9ff
+ * Upstream raw SHA-256: ffdcde3c702da4c2cf24bb655ec2522a152320f575383e30baf6ff28e6f9a4ff
+ *
+ * Local changes: exact HTTPS-origin scope, flattened nesting, grouped selectors,
+ * and no remote imports. Enabled options mirror the local Zen Internet export:
+ * transparency, collapsed channel sidebar, no borders, other changes, misc,
+ * and Dark Reader compatibility.
+ *
+ * MIT License
+ *
+ * Copyright (c) 2025 Transparent Zen
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+@-moz-document url-prefix("https://discord.com/") {
+  :root,
+  .theme-light,
+  .theme-dark {
+    --background-secondary: transparent !important;
+    --background-primary: transparent !important;
+    --background-tertiary: transparent !important;
+    --home-background: transparent !important;
+    --bg-base-primary: transparent !important;
+    --background-base-lowest: transparent !important;
+    --background-base-lower: transparent !important;
+    --background-modifier-accent: transparent !important;
+    --darkreader-background-ffffff: transparent !important;
+  }
+
+  :is(
+    html,
+    body,
+    nav,
+    header,
+    .app-root,
+    #pass-sidebar,
+    #main,
+    #content,
+    section,
+    main,
+    .callContainer_cb9592,
+    .bg__960e4,
+    .tabBody__133bf,
+    .sidebarList_c48ade,
+    .chat_f75fb0,
+    .page_c48ade,
+    .header__34c2c,
+    .contentRegionScroller__23e6b,
+    .container_f369db,
+    [aria-label="Resize Sidebar"],
+    .visual-refresh .root_bfe55a,
+    main + div,
+    main + div > aside > div,
+    #online-tab + div > aside
+  ) {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .children__9293f::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .mainCard_f369db {
+    background: none !important;
+  }
+
+  .floating__01ae2 {
+    background-color: var(--panel-bg, rgb(30 31 34 / 88%)) !important;
+  }
+
+  [aria-label="Servers sidebar"] + div:has(nav > #channels),
+  body:has(#channels) [aria-label="User area"] {
+    width: 0 !important;
+    transition: none !important;
+  }
+
+  [aria-label="Servers sidebar"] + div:has(nav > #channels) .buttons__37e49,
+  body:has(#channels) [aria-label="User area"] .buttons__37e49 {
+    display: none !important;
+  }
+
+  [aria-label="Servers sidebar"] + div:has(nav > #channels):hover,
+  body:has(#channels) [aria-label="User area"]:hover,
+  body:has([aria-label="Servers sidebar"]:hover)
+    [aria-label="Servers sidebar"] + div:has(nav > #channels) {
+    width: 250px !important;
+  }
+
+  [aria-label="Servers sidebar"] + div:has(nav > #channels):hover .buttons__37e49,
+  body:has(#channels) [aria-label="User area"]:hover .buttons__37e49 {
+    display: flex !important;
+  }
+
+  :is(
+    html,
+    body,
+    nav,
+    header,
+    .app-root,
+    #main,
+    #content,
+    section,
+    main,
+    .callContainer_cb9592,
+    .bg__960e4,
+    .tabBody__133bf,
+    .sidebarList_c48ade,
+    .chat_f75fb0,
+    .page_c48ade,
+    .contentRegionScroller__23e6b,
+    .container_f369db,
+    [aria-label="Resize Sidebar"],
+    .visual-refresh .root_bfe55a
+  ) {
+    border: none !important;
+  }
+
+  img.bannerImg_f37cb1 {
+    border-radius: 0 0 1em 1em !important;
+  }
+
+  .app_a3002d {
+    color: transparent !important;
+  }
+}

@@ -1,0 +1,440 @@
+{
+  "artifacts": {
+    "package": {
+      "filename": "cef-151.3.24-1-x86_64.pkg.tar.zst",
+      "sha256": "77cf2dd6c21c89f2efd522ee2c969deeb93ac581f63b12c5461f1f8279901fb9",
+      "size": 121246718,
+      "url": "https://archive.archlinux.org/packages/c/cef/cef-151.3.24-1-x86_64.pkg.tar.zst"
+    },
+    "packageSignature": {
+      "filename": "cef-151.3.24-1-x86_64.pkg.tar.zst.sig",
+      "sha256": "6ad8b549a05057aed839a7428e4f6888d4bd2bcbedee3e4f6ec2c484436a2d8d",
+      "size": 119,
+      "url": "https://archive.archlinux.org/packages/c/cef/cef-151.3.24-1-x86_64.pkg.tar.zst.sig"
+    }
+  },
+  "candidate": {
+    "candidateId": "cef-151.3.24-1-linux-x86_64-en-US",
+    "cefVersion": "151.3.24+g2384915+chromium-151.0.7922.174",
+    "chromiumVersion": "151.0.7922.174",
+    "executable": {
+      "mode": "0755",
+      "path": "zen-cef-shell",
+      "sha256": "0915e3b5fc3d7d439a4ab3469faabce5c88f204325c774db2ae14dd0dda49ebc",
+      "size": 1280800
+    },
+    "fileCount": 13,
+    "locale": "en-US",
+    "runtimeFiles": [
+      {
+        "archivePath": "usr/lib/cef/chrome_100_percent.pak",
+        "mode": "0644",
+        "path": "chrome_100_percent.pak",
+        "sha256": "a26a37d690b7610be27aa16ca44b703f215d55740fd9c398deebf577bb3d9fab",
+        "size": 705607
+      },
+      {
+        "archivePath": "usr/lib/cef/chrome_200_percent.pak",
+        "mode": "0644",
+        "path": "chrome_200_percent.pak",
+        "sha256": "a507c629ae0b823e1a22f9badd95af25a7db0e5b1e5d92f68556ce35e6dddea1",
+        "size": 1224649
+      },
+      {
+        "archivePath": "usr/lib/cef/icudtl.dat",
+        "mode": "0644",
+        "path": "icudtl.dat",
+        "sha256": "9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe",
+        "size": 10876560
+      },
+      {
+        "archivePath": "usr/lib/cef/libEGL.so",
+        "mode": "0755",
+        "path": "libEGL.so",
+        "sha256": "70b5bb4019746c6a4ba699cf5beb64f9fea810369c5c7ed61d9ff47c489857b8",
+        "size": 242336
+      },
+      {
+        "archivePath": "usr/lib/cef/libGLESv2.so",
+        "mode": "0755",
+        "path": "libGLESv2.so",
+        "sha256": "f6066823fcb0513dcbc5dbdc30202c3ab3bdf4bd032080113df24f4111bbd62c",
+        "size": 242344
+      },
+      {
+        "archivePath": "usr/lib/cef/libcef.so",
+        "mode": "0755",
+        "path": "libcef.so",
+        "sha256": "fd6ba1942a7b16841756ea6f64d44d20e6e78423dc68d53d836cabafcef74ea1",
+        "size": 280763416
+      },
+      {
+        "archivePath": "usr/lib/cef/libvk_swiftshader.so",
+        "mode": "0755",
+        "path": "libvk_swiftshader.so",
+        "sha256": "4f714d60ede9f4a01fbca8b457916bc9c97d1dba2d8c06c6f9d05d4fc42bc219",
+        "size": 5017008
+      },
+      {
+        "archivePath": "usr/lib/cef/libvulkan.so.1",
+        "mode": "0755",
+        "path": "libvulkan.so.1",
+        "sha256": "1ba24f269c3889fa21b2ccd103c2471515dcb9a9f73202cd4c8a3c9f1ef991b1",
+        "size": 709104
+      },
+      {
+        "archivePath": "usr/lib/cef/locales/en-US.pak",
+        "mode": "0644",
+        "path": "locales/en-US.pak",
+        "sha256": "eedc73bd58ef8c41d5e7e337593a8c378fb8d705440a8053503029682d34ad40",
+        "size": 585681
+      },
+      {
+        "archivePath": "usr/lib/cef/resources.pak",
+        "mode": "0644",
+        "path": "resources.pak",
+        "sha256": "2bd925e9b6b6217d01e73d4adba4d0158ec3e872096285c61a3f4008c4d79b4d",
+        "size": 23976144
+      },
+      {
+        "archivePath": "usr/lib/cef/v8_context_snapshot.bin",
+        "mode": "0644",
+        "path": "v8_context_snapshot.bin",
+        "sha256": "433e61e3e1ac92513926c8f0983d1d450e7b31ba5679dc18beacac9f52f5956b",
+        "size": 740440
+      },
+      {
+        "archivePath": "usr/lib/cef/vk_swiftshader_icd.json",
+        "mode": "0644",
+        "path": "vk_swiftshader_icd.json",
+        "sha256": "c9eef28b6b984fec220ef0abfecc40b502d46946706e47bfe97707027cb818bd",
+        "size": 107
+      }
+    ],
+    "sandbox": {
+      "gid": 0,
+      "installedPath": "/usr/lib/cef/chrome-sandbox",
+      "mode": "4755",
+      "sha256": "91ac6d9055566d76661d91cb816b8391ca6ca17706dc4568155296f556bebd7d",
+      "size": 14560,
+      "uid": 0
+    },
+    "target": "linux-x86_64",
+    "totalBytes": 326364196,
+    "treeSha256": "1549fcc1ff8759f64a25919840260cf23b6f7193b74f0d34ca81dec033e48c74"
+  },
+  "chromiumRuntimeSourceLockVersion": 1,
+  "package": {
+    "arch": "x86_64",
+    "archiveDirectories": 32,
+    "archiveEntries": 962,
+    "archiveRegularFiles": 930,
+    "buildInfo": {
+      "mode": "0644",
+      "path": ".BUILDINFO",
+      "sha256": "b8026ffe89c9af654b0c9882cbbab2c6e8fab3d147488ddb11faed0651d42217",
+      "size": 10282
+    },
+    "buildTimestamp": 1787401148,
+    "mtree": {
+      "mode": "0644",
+      "path": ".MTREE",
+      "sha256": "8f0f42da1f2d751207cbc25962c832047ad8a2cae8244a69ff9d18fe419737d9",
+      "size": 40790
+    },
+    "name": "cef",
+    "packageInfo": {
+      "mode": "0644",
+      "path": ".PKGINFO",
+      "sha256": "cadeca82eeb1a823aac42bfb0c3f1ae641ef7fa38e4cfa410144ade04c76a69b",
+      "size": 1369
+    },
+    "packager": "Jonathan Grotel\u00fcschen <tippfehlr@archlinux.org>",
+    "signature": {
+      "fingerprint": "1AB6C278FF41229BCF747B2C8DFDB575B0538C5D",
+      "hashAlgorithm": "SHA512",
+      "hashAlgorithmCode": 10,
+      "publicKeyAlgorithm": "EdDSA",
+      "publicKeyAlgorithmCode": 22,
+      "signatureDate": "2026-08-22",
+      "signatureTimestamp": 1787406027,
+      "signerUid": "tippfehlr <tippfehlr@tippfehlr.dev>",
+      "trust": "fully"
+    },
+    "version": "151.3.24-1"
+  },
+  "packaging": {
+    "buildFlags": [
+      "custom_toolchain=\"//build/toolchain/linux/unbundle:default\"",
+      "host_toolchain=\"//build/toolchain/linux/unbundle:default\"",
+      "is_official_build=true",
+      "symbol_level=0",
+      "treat_warnings_as_errors=false",
+      "fatal_linker_warnings=false",
+      "disable_fieldtrial_testing_config=true",
+      "blink_enable_generated_code_formatting=false",
+      "ffmpeg_branding=\"Chrome\"",
+      "proprietary_codecs=true",
+      "rtc_use_pipewire=true",
+      "link_pulseaudio=true",
+      "use_custom_libcxx=true",
+      "use_sysroot=false",
+      "use_system_libffi=true",
+      "use_qt5=false",
+      "use_qt6=false",
+      "use_gtk=false",
+      "use_cups=false",
+      "use_gio=false",
+      "use_kerberos=false",
+      "use_libpci=false",
+      "use_udev=true",
+      "cef_use_gtk=false",
+      "enable_remoting=false",
+      "use_vaapi=false",
+      "use_clang_modules=false",
+      "devtools_bundle=false"
+    ],
+    "cefCommit": "2384915b7b1f0fe5ad1107e48d80c34e86b698d7",
+    "cefGitArchiveSha256": "2129393a400da2b56aa566a178ec6931d3ff2540812f8a4f07586498d2f995fb",
+    "chromiumSourceSha256": "054ebe79d7235dfaaca063fc6ea32dbaa74b8cd3b915f1edbe622d740908f5fe",
+    "commit": "16f58859f57196208410635a0763008930c89070",
+    "files": [
+      {
+        "mode": "0644",
+        "path": ".SRCINFO",
+        "sha256": "5c4a6c08ebe7d6a88a4d983f7e988da33a28f346851d030159a78fa9482ba449",
+        "size": 3919
+      },
+      {
+        "mode": "0644",
+        "path": ".nvchecker.toml",
+        "sha256": "13eb0977a05d5861861f3797f2b8f0de51ff84ee1a2149393aa4c851b6251790",
+        "size": 278
+      },
+      {
+        "mode": "0644",
+        "path": "FindCEF.cmake",
+        "sha256": "e576250c4d0f3dd307bd22c6d4f9f7aba54fdf4d5899520c0bd1c3527aec65ed",
+        "size": 4567
+      },
+      {
+        "mode": "0644",
+        "path": "LICENSE",
+        "sha256": "7056c04df17a4e0f0bac9f787f347c9cd892cee6323d1c89528090afd0b934a3",
+        "size": 646
+      },
+      {
+        "path": "LICENSES/0BSD.txt",
+        "target": "../LICENSE",
+        "type": "symlink"
+      },
+      {
+        "mode": "0644",
+        "path": "LICENSES/BSD-2-Clause.txt",
+        "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df",
+        "size": 1267
+      },
+      {
+        "mode": "0644",
+        "path": "LICENSES/BSD-3-Clause.txt",
+        "sha256": "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d",
+        "size": 1460
+      },
+      {
+        "mode": "0644",
+        "path": "LICENSES/MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "size": 1078
+      },
+      {
+        "mode": "0644",
+        "path": "PKGBUILD",
+        "sha256": "5526d53382da963965172022df4da40cc54b1f6c97fba1bca0bef6d450a21710",
+        "size": 15887
+      },
+      {
+        "mode": "0644",
+        "path": "REUSE.toml",
+        "sha256": "69fdb0762160d437413de176468019f5865d4f4931965aea2cc8ec894f11c3e8",
+        "size": 2476
+      },
+      {
+        "mode": "0644",
+        "path": "cef-no-libxml-visibility-patch.patch",
+        "sha256": "6695d7bcac489f74b8290a05dac540c2b5c5fed997ee119ae05419d36509445d",
+        "size": 483
+      },
+      {
+        "mode": "0644",
+        "path": "cef-no-sysroot.patch",
+        "sha256": "cdc046c3da5a57dae8fba0de49cadbe65d4f8fbfffb172f7a768222232595faa",
+        "size": 1010
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-138-nodejs-version-check.patch",
+        "sha256": "11a96ffa21448ec4c63dd5c8d6795a1998d8e5cd5a689d91aea4d2bdd13fb06e",
+        "size": 1873
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-145-fix-SYS_SECCOMP.patch",
+        "sha256": "4fc040a0656a0a524dd8ad090cd129fc5b6cb21adcc66be82080165789e8c13e",
+        "size": 278
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-147-revert-clang-no-lifetime-dse-flag.patch",
+        "sha256": "c382830318c5b37826ecf44f3ba9def6be8affdad1bce819ecb83f3222ff4b3a",
+        "size": 601
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-147-rust-1.95-bytemuck.patch",
+        "sha256": "b9e6339221efe03540ffb360c161d93604a1fc93a5a1c53e5e9849066f987d05",
+        "size": 869
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-149-build-with-wasm-rollup.patch",
+        "sha256": "c4df27d25d298ac95d85e6f06b558b73bb67de5110a19a0228cb7f8519291ea5",
+        "size": 4703
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-149-drop-unknown-clang-flag.patch",
+        "sha256": "e25cf8fb60f5958127053c515b8decc2b45acceebf9a57654066d093df11f8e9",
+        "size": 1200
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-149-unbundle-minizip-undo-unicode.patch",
+        "sha256": "c22338d13f12772cdbcb5cfc1ace94438b9f9c72353cdb165a3ff3ef3d677c78",
+        "size": 1142
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-149-use-of-undeclared-identifier-ERROR.patch",
+        "sha256": "951514535be65f0e2f84e82305d96292be1da353c1427ba1048ea24be70003c4",
+        "size": 583
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-150-revert-avx-flag-change.patch",
+        "sha256": "5f6ccb7b945c8a13c690493723bad816b36f2f25792d47e677b56f8200907e60",
+        "size": 304
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-151-dont-depends-on-histograms.xml-if-it-is-not-git-checkout.patch",
+        "sha256": "552ddcef0cf139927f54c9c728c68b0e385600107e5166449b29de75e5dfcd7f",
+        "size": 1400
+      },
+      {
+        "mode": "0644",
+        "path": "chromium-disable-font-tests.patch",
+        "sha256": "44dcc0da55a8c6c6af875addcfb9c552c722b56a31479eb7d99f16d0a27f4ebb",
+        "size": 831
+      },
+      {
+        "mode": "0644",
+        "path": "compiler-rt-adjust-paths.patch",
+        "sha256": "ec8e49b7114e2fa2d359155c9ef722ff1ba5fe2c518fa48e30863d71d3b82863",
+        "size": 1373
+      },
+      {
+        "mode": "0644",
+        "path": "glibc-2.42-baud-rate-fix.patch",
+        "sha256": "1c1898f263eaacbc069a8e1a3e732852350350d1dad4cb1a6bba430e3b796cd0",
+        "size": 476
+      },
+      {
+        "mode": "0644",
+        "path": "increase-fortify-level.patch",
+        "sha256": "d634d2ce1fc63da7ac41f432b1e84c59b7cceabf19d510848a7cff40c8025342",
+        "size": 644
+      }
+    ],
+    "pkgbuildSha256": "5526d53382da963965172022df4da40cc54b1f6c97fba1bca0bef6d450a21710",
+    "repository": "https://gitlab.archlinux.org/archlinux/packaging/packages/cef.git",
+    "tag": "151.3.24-1",
+    "tagObject": "1c3b42b8f195e3219894f9671baa2f72fae7b1a8",
+    "tagSignature": {
+      "fingerprint": "1AB6C278FF41229BCF747B2C8DFDB575B0538C5D",
+      "hashAlgorithm": "SHA512",
+      "hashAlgorithmCode": 10,
+      "publicKeyAlgorithm": "EdDSA",
+      "publicKeyAlgorithmCode": 22,
+      "signatureDate": "2026-08-22",
+      "signatureTimestamp": 1787406029,
+      "signerUid": "tippfehlr <tippfehlr@tippfehlr.dev>",
+      "trust": "fully"
+    },
+    "treeListingSha256": "40f50d31cc13d0e39fe64736369aa1d88d0ebc7d3c8c53bbe7dbc0f7d7d6eedf"
+  },
+  "provenance": {
+    "captureIssue": "https://github.com/chromiumembedded/cef/issues/4053",
+    "captureParity": "blocked-upstream-cef-4053",
+    "cefSourceBuildStatus": "not-performed",
+    "cefSourceReproducibilityStatus": "not-tested",
+    "downloadBoundary": "system-save-picker",
+    "permissionBoundary": "deny-all-reference",
+    "rtcUsePipeWire": true
+  },
+  "shell": {
+    "sourceFiles": [
+      {
+        "mode": "0644",
+        "path": "CMakeLists.txt",
+        "sha256": "45839b164c93e38004383f11778452204e9c20943915192877fdecc87cbbea91",
+        "size": 1130
+      },
+      {
+        "mode": "0644",
+        "path": "main.cc",
+        "sha256": "a02607787b51fc052a431cf314541f4b0c6fc26b34323373705d6f16328e8e67",
+        "size": 21490
+      }
+    ],
+    "sourceTreeSha256": "b513041ef07d364379844b4862f8f057fd78753bcfa45d99b37b3c38cd31921e",
+    "toolchain": {
+      "clang": {
+        "path": "/usr/bin/clang++",
+        "sha256": "b621028947ed7d2b0c0d8cdae1cbfb886ac8371fd47f8d25162568812eb9ccfe",
+        "size": 178384,
+        "version": "clang version 22.1.8"
+      },
+      "cmake": {
+        "path": "/usr/bin/cmake",
+        "sha256": "1eee767bcd099767a9109e3e286861f81b17bbff754735cfc798d1823ad88429",
+        "size": 11934744,
+        "version": "cmake version 4.4.2"
+      },
+      "gpg": {
+        "path": "/usr/bin/gpg",
+        "sha256": "ffdf75b9133c3dcf0bf53896801b9e4559cb4f15031c9a2bf24821cdcddd7cc6",
+        "size": 1189008,
+        "version": "gpg (GnuPG) 2.4.9"
+      },
+      "ninja": {
+        "path": "/usr/bin/ninja",
+        "sha256": "386e7381e7664302b9add6890de5f09a37513bb8c1d034210ac757332898f5ab",
+        "size": 354496,
+        "version": "1.13.2"
+      },
+      "parallelJobs": 1,
+      "sdkFileCount": 693,
+      "sdkTotalBytes": 5756455,
+      "sdkTreeSha256": "4ebdd468e8fe79925bd8220235c47c3e8ae1644593d9023ad6a0689c21aff85f",
+      "warningExceptions": [
+        "-Wno-undefined-var-template"
+      ],
+      "zstd": {
+        "path": "/usr/bin/zstd",
+        "sha256": "6b799c822798547e33f3d928d04492ca4814d4b45088786b73d700f0cc0d905a",
+        "size": 193792,
+        "version": "*** Zstandard CLI (64-bit) v1.5.7, by Yann Collet ***"
+      }
+    }
+  }
+}
