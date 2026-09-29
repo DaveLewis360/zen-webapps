@@ -1,0 +1,58 @@
+/*
+ * zen-app-runtime: translucent Spotify Web Player.
+ * Complements the vendored Zen Internet sheet with selectors that survive
+ * Spotify's hashed class names: Encore design tokens, stable ids,
+ * data-testid attributes and the layout structure below
+ * [data-testid="root"]. Overlays (menus, dialogs, popovers, tooltips) get
+ * Spotify's own opaque surfaces back for readability.
+ */
+@-moz-document domain("open.spotify.com") {
+  html,
+  body,
+  #main,
+  [data-testid="root"],
+  [data-testid="root"] > div,
+  [data-testid="root"] > div > div:not([role="dialog"], [role="menu"], [role="listbox"]),
+  [data-testid="root"] > div > div > div:not([role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]),
+  #main-view,
+  #Desktop_LeftSidebar_Id,
+  #Desktop_LeftSidebar_Id > nav,
+  #Desktop_PanelContainer_Id,
+  #global-nav-bar,
+  aside[data-testid="now-playing-bar"],
+  div:has(> aside[data-testid="now-playing-bar"]),
+  .main-view-container,
+  .main-view-container__scroll-node {
+    background-color: transparent !important;
+  }
+
+  /* Encore surface tokens: panels become glass, cards a light frost. */
+  [data-testid="root"] {
+    --background-base: transparent !important;
+    --background-press: rgb(0 0 0 / 0.28) !important;
+    --background-highlight: rgb(255 255 255 / 0.09) !important;
+    --background-elevated-base: rgb(255 255 255 / 0.07) !important;
+    --background-elevated-highlight: rgb(255 255 255 / 0.12) !important;
+    --background-elevated-press: rgb(255 255 255 / 0.05) !important;
+  }
+
+  :is(#floating-ui-popover-layer, [role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"], .ReactModalPortal, [data-tippy-root]) {
+    --background-base: #121212 !important;
+    --background-press: #000 !important;
+    --background-highlight: #1f1f1f !important;
+    --background-elevated-base: #1f1f1f !important;
+    --background-elevated-highlight: #2a2a2a !important;
+    --background-elevated-press: #191919 !important;
+  }
+
+  /* Spotify's per-page colour header: keep the hue, fade it into the glass. */
+  #main-view main > div > div[style*="background-color"] {
+    background-image: none !important;
+    mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.5), transparent 92%) !important;
+  }
+
+  /* The noise texture only makes sense on Spotify's own dark background. */
+  :root {
+    --background-noise: none !important;
+  }
+}

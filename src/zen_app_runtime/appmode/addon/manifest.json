@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "Zen App Runtime — app mode",
+  "description": "Turns this dedicated Zen profile into a single native-feeling web app.",
+  "version": "@VERSION@",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "zenapp@zen-app-runtime",
+      "strict_min_version": "140.0"
+    }
+  },
+  "experiment_apis": {
+    "zenapp": {
+      "schema": "schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "api.js",
+        "paths": [["zenapp"]],
+        "events": ["startup"]
+      }
+    }
+  }
+}

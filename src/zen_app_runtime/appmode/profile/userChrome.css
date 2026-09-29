@@ -1,0 +1,212 @@
+/*
+ * zen-app-runtime app mode: window chrome for a single-purpose app profile.
+ * Rendered into <profile>/chrome/userChrome.css; do not edit, it is rewritten.
+ * Palette variables (--zenapp-*) are refreshed live by the app runtime.
+ */
+@namespace html url("http://www.w3.org/1999/xhtml");
+
+:root {
+  --zen-element-separation: 0px !important;
+  --zen-border-radius: 0px !important;
+  --zen-native-inner-radius: 0px !important;
+  --zenapp-font: "Google Sans Flex", "Google Sans", "Roboto Flex", Roboto, system-ui, sans-serif;
+}
+
+/* ---------------------------------------------------------------------
+ * No browser UI, ever: toolbars, tabs, sidebars, URL bar, status panel.
+ * ------------------------------------------------------------------- */
+#navigator-toolbox,
+#zen-sidebar-splitter,
+#sidebar-container,
+#sidebar-launcher-splitter,
+#sidebar-box,
+#sidebar-splitter,
+#sidebar-main,
+#zen-appcontent-navbar-wrapper,
+#zen-appcontent-navbar-container,
+#PersonalToolbar,
+#toolbar-menubar,
+#TabsToolbar,
+#titlebar,
+#statuspanel,
+#fullscr-toggler,
+#zen-watermark,
+#zen-toast-container,
+#zen-welcome,
+#customization-container,
+#tab-notification-deck,
+#global-notificationbox,
+#notifications-toolbar,
+.zen-split-view-splitter,
+#zen-splitview-dropzone {
+  display: none !important;
+}
+
+/* Content fills the whole window, edge to edge (the compositor rounds it). */
+#zen-main-app-wrapper,
+#browser,
+#zen-appcontent-wrapper,
+#zen-tabbox-wrapper,
+#tabbrowser-tabbox,
+#tabbrowser-tabpanels,
+.browserSidebarContainer,
+.browserContainer,
+.browserStack,
+#tabbrowser-tabpanels browser[type="content"] {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  clip-path: none !important;
+}
+
+/* ---------------------------------------------------------------------
+ * Appearance. Translucent: the page is transparent, the window paints a
+ * tint of the palette surface over the compositor's blur.
+ * ------------------------------------------------------------------- */
+@media (-moz-pref("zen.widget.linux.transparency")) {
+  #main-window {
+    background: color-mix(in srgb, var(--zenapp-tint-color) calc(var(--zenapp-tint) * 1%), transparent) !important;
+  }
+  #zen-main-app-wrapper,
+  #browser,
+  #zen-appcontent-wrapper,
+  #zen-tabbox-wrapper,
+  #tabbrowser-tabbox,
+  #tabbrowser-tabpanels,
+  .browserSidebarContainer,
+  .browserContainer,
+  .browserStack {
+    background: transparent !important;
+  }
+  #zen-browser-background {
+    display: none !important;
+  }
+}
+
+@media not (-moz-pref("zen.widget.linux.transparency")) {
+  #main-window,
+  #tabbrowser-tabpanels {
+    background: var(--zenapp-surface) !important;
+  }
+  #zen-browser-background {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Content context menu: only what an app needs. Everything not listed is
+ * hidden here (robust against items the browser shows asynchronously);
+ * separators are managed by the runtime (zenapp-visible).
+ * ------------------------------------------------------------------- */
+#contentAreaContextMenu > :is(menuitem, menu, menugroup, menuseparator):not(
+    #context-undo, #context-redo, #context-cut, #context-copy, #context-paste,
+    #context-paste-no-formatting, #context-delete, #context-selectall,
+    #context-copylink, #context-copyemail, #context-copyphone,
+    #context-copyimage-contents, #context-copyimage, #context-saveimage,
+    #context-savevideo, #context-saveaudio, #context-video-saveimage,
+    #context-media-play, #context-media-pause, #context-media-mute,
+    #context-media-unmute, #context-media-playbackrate, #context-media-loop,
+    #context-media-showcontrols, #context-media-hidecontrols,
+    #context-video-fullscreen, #context-leave-dom-fullscreen,
+    #context-reveal-password,
+    #spell-no-suggestions, #spell-add-to-dictionary, #spell-undo-add-to-dictionary,
+    .spell-suggestion, #spell-check-enabled, #spell-dictionaries,
+    #zenapp-context-open-external, #zenapp-context-settings,
+    .webextension-menuitem, [zenapp-visible]
+  ) {
+  display: none !important;
+}
+
+:root[zenapp-developer] #contentAreaContextMenu > :is(#context-inspect, #context-inspect-a11y) {
+  display: flex !important;
+}
+
+#contentAreaContextMenu {
+  font-family: var(--zenapp-font);
+}
+
+/* ---------------------------------------------------------------------
+ * Permission prompts: an app dialog, centred at the top of the window.
+ * ------------------------------------------------------------------- */
+#zenapp-popup-anchor {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+#notification-popup {
+  --panel-background: var(--zenapp-surface-container-high) !important;
+  --panel-color: var(--zenapp-on-surface) !important;
+  --panel-border-color: transparent !important;
+  --panel-border-radius: 28px !important;
+  --arrowpanel-background: var(--zenapp-surface-container-high) !important;
+  --arrowpanel-color: var(--zenapp-on-surface) !important;
+  --arrowpanel-border-color: transparent !important;
+  --arrowpanel-border-radius: 28px !important;
+  font-family: var(--zenapp-font);
+}
+
+#notification-popup popupnotification {
+  padding: 8px 8px 4px !important;
+}
+
+#notification-popup .popup-notification-description {
+  font-size: 15px !important;
+  line-height: 22px !important;
+}
+
+#notification-popup :is(.popup-notification-primary-button, .popup-notification-secondary-button) {
+  appearance: none !important;
+  min-height: 40px !important;
+  padding-inline: 24px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+  transition: border-radius 180ms ease !important;
+}
+
+#notification-popup .popup-notification-primary-button {
+  background: var(--zenapp-primary) !important;
+  color: var(--zenapp-on-primary) !important;
+}
+
+#notification-popup .popup-notification-secondary-button {
+  background: transparent !important;
+  color: var(--zenapp-primary) !important;
+}
+
+#notification-popup :is(.popup-notification-primary-button, .popup-notification-secondary-button):active {
+  border-radius: 12px !important;
+}
+
+/* ---------------------------------------------------------------------
+ * App settings dialog frame (tab-modal).
+ * ------------------------------------------------------------------- */
+.dialogBox[zenapp-dialog] {
+  border: none !important;
+  border-radius: 28px !important;
+  background: var(--zenapp-surface-container) !important;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.dialogBox[zenapp-dialog] .dialogTitleBar {
+  display: none !important;
+}
+
+.dialogBox[zenapp-dialog] .dialogFrame {
+  margin: 0 !important;
+}
+
+.dialogOverlay:has(> .dialogBox[zenapp-dialog]) {
+  background: rgb(0 0 0 / 0.32) !important;
+  align-items: center !important;
+  justify-content: center !important;
+}

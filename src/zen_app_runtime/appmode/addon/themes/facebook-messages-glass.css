@@ -1,0 +1,21 @@
+/*
+ * zen-app-runtime: Messenger on facebook.com/messages as a standalone app.
+ * Hides Facebook's global navigation banner and lets the Messenger surfaces
+ * follow the translucent window. Loaded only in the Transparent appearance.
+ */
+@-moz-document url-prefix("https://www.facebook.com/messages"),
+  url-prefix("https://web.facebook.com/messages"),
+  url-prefix("https://facebook.com/messages") {
+  div[role="banner"] {
+    display: none !important;
+  }
+
+  :root,
+  .__fb-dark-mode,
+  .__fb-light-mode {
+    --header-height: 0px !important;
+    --web-wash: transparent !important;
+    --messenger-card-background: transparent !important;
+    --mwp-header-background-color: transparent !important;
+  }
+}

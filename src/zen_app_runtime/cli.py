@@ -247,7 +247,89 @@ def build_parser() -> argparse.ArgumentParser:
     remove = commands.add_parser("remove", help="remove a validated app definition")
     remove.add_argument("app_id")
     remove.add_argument("--yes", action="store_true", help="confirm permanent removal")
+    _add_app_mode_commands(commands)
     return parser
+
+
+APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass"}
+
+
+def _add_app_mode_commands(commands) -> None:
+    """App mode: native-feeling apps on the package-managed Zen runtime."""
+    new = commands.add_parser(
+        "new",
+        help="app mode: create an app from a preset (spotify, discord, messenger, ...) or an https URL",
+    )
+    new.add_argument("source", help="preset key or https:// URL")
+    new.add_argument("--id", dest="new_app_id", help="app id (default: preset key or derived from the URL)")
+    new.add_argument("--name", dest="new_name", help="display name")
+    appearance = new.add_mutually_exclusive_group()
+    appearance.add_argument("--transparent", dest="appearance", action="store_const", const="transparent")
+    appearance.add_argument("--opaque", dest="appearance", action="store_const", const="opaque")
+    new.add_argument("--no-launch", action="store_true", help="only create it; do not start it")
+
+    run = commands.add_parser("run", help="app mode: start an app or focus its window")
+    run.add_argument("app_id")
+    run.add_argument("url", nargs="?", help="optional deep link to open inside the app")
+
+    settings = commands.add_parser("settings", help="app mode: open an app's settings")
+    settings.add_argument("app_id")
+
+    apps = commands.add_parser("apps", help="app mode: list apps")
+    apps.add_argument("--json", action="store_true")
+
+    commands.add_parser("presets", help="app mode: list built-in presets")
+
+    rm = commands.add_parser("rm", help="app mode: remove an app and its launcher")
+    rm.add_argument("app_id")
+    rm.add_argument("--purge", action="store_true", help="also delete the profile (logins, data)")
+    rm.add_argument("--yes", action="store_true", help="confirm removal")
+
+    commands.add_parser("setup", help="app mode: install the zen-app launcher shim and refresh all apps")
+
+    refresh = commands.add_parser("refresh", help="app mode: re-render profiles and launchers")
+    refresh.add_argument("app_id", nargs="?")
+
+    styles = commands.add_parser("styles", help="app mode: Zen Internet site styles (show / update)")
+    styles.add_argument("styles_action", choices=("show", "update"))
+    styles.add_argument("target", nargs="?", help="app id or hostname (show)")
+
+    commands.add_parser("glass", help="app mode: show desktop glass sources (Ghostty, Vesktop, Zen)")
+
+
+def _run_app_mode(arguments: argparse.Namespace) -> int:
+    from .appmode import commands as app_mode
+
+    command = arguments.command
+    if command == "new":
+        return app_mode.cmd_new(
+            arguments.source,
+            app_id=arguments.new_app_id,
+            name=arguments.new_name,
+            appearance=arguments.appearance,
+            launch_after=not arguments.no_launch,
+        )
+    if command == "run":
+        outcome = app_mode.cmd_run(arguments.app_id, url=arguments.url)
+        return 0 if outcome.action in ("started", "focused", "forwarded") else 1
+    if command == "settings":
+        app_mode.cmd_run(arguments.app_id, action="settings")
+        return 0
+    if command == "apps":
+        return app_mode.cmd_apps(as_json=arguments.json)
+    if command == "presets":
+        return app_mode.cmd_presets()
+    if command == "rm":
+        return app_mode.cmd_rm(arguments.app_id, purge=arguments.purge, yes=arguments.yes)
+    if command == "setup":
+        return app_mode.cmd_setup()
+    if command == "refresh":
+        return app_mode.cmd_refresh(arguments.app_id)
+    if command == "styles":
+        return app_mode.cmd_styles(arguments.styles_action, arguments.target)
+    if command == "glass":
+        return app_mode.cmd_glass()
+    raise AssertionError(command)  # pragma: no cover
 
 
 def _build_plan(arguments: argparse.Namespace, store: AppStore):
@@ -268,6 +350,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(error.code)
 
     store = AppStore(arguments.store)
+    if arguments.command in APP_MODE_COMMANDS:
+        from .appmode.errors import AppModeError
+
+        try:
+            return _run_app_mode(arguments)
+        except AppModeError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        except OSError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
     try:
         if arguments.command == "doctor":
             report = doctor_report(

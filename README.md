@@ -2,7 +2,41 @@
 
 Zen App Runtime is a working Linux vertical slice for running a site-specific app with an explicitly pinned local Zen/Firefox-compatible executable and a dedicated managed profile. The trust boundary is intentionally narrow: strict versioned app manifests, descriptor-relative storage, deterministic plans and launch tickets, SHA-256 verification of an operator-supplied runtime lock, sentinel-marked profiles, explicit Wayland/X11 selection, and a synchronous supervising launcher.
 
-The project does **not** bundle, discover, download, or update Zen; access a default Firefox/Zen profile; or install extensions or desktop files. Legacy mode deliberately leaves stock browser chrome and does not enforce manifest navigation metadata. The opt-in bundled App Shell supplies a reviewed Gecko `-app` adapter with its own privileged onboarding, minimal chrome, first same-origin navigation/shortcut/window controls, and an explicit sandbox-preserving preference baseline. Native evidence below qualifies one local Arch Zen installation, not every Zen package format or version.
+The legacy and App Shell workflows below do **not** bundle, discover, download, or update Zen; access a default Firefox/Zen profile; or install extensions or desktop files. Legacy mode deliberately leaves stock browser chrome and does not enforce manifest navigation metadata. The opt-in bundled App Shell supplies a reviewed Gecko `-app` adapter with its own privileged onboarding, minimal chrome, first same-origin navigation/shortcut/window controls, and an explicit sandbox-preserving preference baseline. Native evidence below qualifies one local Arch Zen installation, not every Zen package format or version. [App mode](#app-mode) is the deliberate, separately rooted exception for daily use: it runs the system Zen package, sideloads its own add-on into its own profiles, and installs desktop entries.
+
+## App mode
+
+App mode turns a site into a desktop app that looks and behaves native: its own launcher, window class, profile, translucent glass background, and no visible browser. Each app is a complete Zen instance whose browser layer is hidden rather than removed, so WebRTC, screen sharing, notifications, Widevine/EME and permission prompts work exactly as in Zen.
+
+```sh
+python3.11 -m zen_app_runtime setup      # installs the ~/.local/bin/zen-app shim (re-run after moving the checkout)
+zen-app presets                          # spotify, discord, messenger, youtube-music, whatsapp, telegram
+zen-app new discord                      # create and launch; the first run shows the onboarding
+zen-app new https://app.slack.com/client --id slack --no-launch
+zen-app run discord [URL]                # a second launch focuses the running window
+zen-app settings discord                 # or Ctrl+, inside the app (also the launcher's Settings action)
+zen-app apps [--json]
+zen-app refresh [ID]                     # re-render profiles after updating the checkout or Zen
+zen-app styles show discord              # Zen Internet styles that apply to an app or a host
+zen-app styles update                    # fetch the current Zen Internet catalog
+zen-app glass                            # desktop glass sources and inherited rendering prefs
+zen-app rm slack --yes [--purge]         # --purge also deletes the profile and its logins
+```
+
+Each app has a definition `~/.config/zen-apps/<id>.json` (schema `zen-app/1`), a profile `~/.local/share/zen-apps/<id>/profile`, and a launcher `~/.local/share/applications/zen-app-<id>.desktop`. The window's Wayland app_id / X11 class is `zen-app-<id>`, for compositor rules such as `hl.window_rule({ match = { class = "^(zen-app-spotify)$" }, workspace = "special:music" })`. `ZEN_APP_MODE_ROOT=/absolute/dir` keeps everything below one directory; `ZEN_APP_ZEN_BINARY` selects another Zen executable.
+
+How it works:
+
+- **Runtime.** The package-managed Zen (`/opt/zen-browser-bin/zen-bin` or `zen-browser` on `PATH`), not hash-pinned, so package updates apply. Launches pass `--name/--class zen-app-<id>` and `MOZ_APP_REMOTINGNAME`, so a second launch is forwarded to the running app and focused through `hyprctl` when available.
+- **Profile.** `user.js` starts with the GPU/rendering preferences of the main Zen profile (read-only, allowlisted prefixes such as `gfx.webrender.`, `widget.dmabuf`, `media.ffmpeg.`), so apps render and decode video like the browser, followed by the app baseline and a marked settings block. `chrome/userChrome.css` hides every Zen surface.
+- **Add-on.** A privileged experiment add-on (`zenapp@zen-app-runtime`, built deterministically on render) provides the M3 Expressive onboarding and settings studio, scope routing (in-scope navigation stays in the app, everything else opens in the default browser), the shortcut and context-menu allowlists, site styles, glass and a status file `zen-app/status.json`.
+- **Glass.** `auto` resolves to Ghostty, then Vesktop, then Zen; `ghostty`, `vesktop`, `zen` and `custom` can be chosen in Settings → Appearance. The window paints exactly the source's colour and alpha (for example Ghostty's `background` at `background-opacity`) and the page stays transparent; blur comes from the compositor, so it matches every other blurred window.
+- **Site styles.** A pinned copy of the [Zen Internet](https://github.com/sameerasw/zen-internet) community catalog ([my-internet](https://github.com/sameerasw/my-internet), 666 sites, MIT © 2025 Transparent Zen, see `appmode/data/LICENSE-zen-internet.txt`) is matched with the extension's own rules (exact, `+` wildcard, `-` TLD wildcard, suffix, mapping) and registered as origin-scoped user sheets. Individual features can be switched off in Settings → Styles. Sign-in hops (for example `accounts.google.com`) only receive styles written for exactly that host. App-mode extras add Spotify glass surfaces and a standalone Facebook Messages layout.
+- **Shortcuts.** Only editing, reload (`Ctrl+R`, `F5`), zoom (`Ctrl` `+`/`-`/`0`), `Alt+←/→`, `F11`, `Ctrl+Q`, find (`Ctrl+F`, when enabled) and devtools (when developer mode is on) keep their browser meaning; `Ctrl+W` closes the window and `Ctrl+,` opens settings. All other browser keys are disabled and the context menu is reduced to page actions.
+
+Security notes: the add-on is unsigned; `xpinstall.signatures.required=false` and `extensions.experiments.enabled=true` are set only inside app-mode profiles, which accept add-ons from the profile and the Zen installation only (no user- or system-wide extension directories). Profiles are private (`0700`) and separate from the main Zen profile, which app mode only reads for glass and rendering preferences. Zen Internet catalog updates are fetched over HTTPS, validated, size-limited and applied as CSS only.
+
+Limitations: no tray icon or run-in-background on window close, no unread badges on the launcher, and media controls (MPRIS) are not renamed per app. Messenger uses `facebook.com/messages/` since messenger.com closed in April 2026.
 
 ## Included now
 
@@ -373,6 +407,6 @@ PYTHONPATH=src python3 -c \
 sha256sum dist/*
 ```
 
-The wheel contains Python package source plus the exact eight-file `browser_adapter_bundle/` resource tree, including the pinned Discord theme stylesheet. The sdist additionally contains documentation and tests, including both opt-in native harnesses; neither artifact contains Zen, extension archives, user profiles, runtime locks, or generated evidence.
+The wheel contains Python package source plus the exact eight-file `browser_adapter_bundle/` resource tree, including the pinned Discord theme stylesheet, and the `appmode/` package: add-on sources (built into an XPI only when a profile is rendered), `userChrome.css`, and the vendored Zen Internet catalog with its MIT license. The sdist additionally contains documentation and tests, including both opt-in native harnesses; neither artifact contains Zen, extension archives, user profiles, runtime locks, or generated evidence.
 
 See [architecture.md](docs/architecture.md) for detailed invariants and [build.md](docs/build.md) for release validation and future pinned-upstream strategy.

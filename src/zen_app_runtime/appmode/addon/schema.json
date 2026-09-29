@@ -1,0 +1,7 @@
+[
+  {
+    "namespace": "zenapp",
+    "description": "Privileged app-mode runtime; exposes no functions to extension pages.",
+    "functions": []
+  }
+]

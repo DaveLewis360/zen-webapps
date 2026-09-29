@@ -1,0 +1,1339 @@
+/*
+ * zen-app-runtime app mode — Material 3 Expressive onboarding & settings.
+ * Colours come from the runtime palette (--zenapp-* on :root).
+ */
+
+:root {
+  --md-font: "Google Sans Flex", "Google Sans", "Roboto Flex", Roboto, system-ui, sans-serif;
+  --md-icon-font: "Material Symbols Rounded", "Material Symbols Outlined";
+
+  /* M3 Expressive motion: spring curves sampled into linear() easings. */
+  --spring-fast: linear(0, 0.029, 0.106, 0.212, 0.334, 0.462, 0.585, 0.7, 0.801, 0.886, 0.955, 1.009, 1.048, 1.074, 1.088, 1.094, 1.094, 1.088, 1.078, 1.067, 1.055, 1.043, 1.032, 1.022, 1.013, 1.006, 1.001, 0.997, 0.994, 0.992, 0.991, 0.991, 0.991, 0.992, 0.993, 0.994, 0.996, 0.997, 0.998, 1);
+  --spring-fast-d: 353ms;
+  --spring-default: linear(0, 0.02, 0.071, 0.142, 0.225, 0.313, 0.402, 0.488, 0.569, 0.642, 0.708, 0.766, 0.817, 0.859, 0.895, 0.925, 0.949, 0.968, 0.982, 0.993, 1.002, 1.008, 1.011, 1.014, 1.015, 1.015, 1.015, 1.014, 1.013, 1.012, 1.01, 1.009, 1.008, 1.006, 1.005, 1.004, 1.003, 1.003, 1.002, 1);
+  --spring-default-d: 422ms;
+  --spring-slow-d: 581ms;
+  --effects: linear(0, 0.117, 0.327, 0.524, 0.679, 0.79, 0.865, 0.915, 0.947, 0.968, 0.98, 0.988, 0.993, 0.996, 0.997, 1);
+  --effects-fast-d: 142ms;
+  --effects-d: 220ms;
+  --effects-slow-d: 311ms;
+
+  /* M3 shape scale. */
+  --shape-xs: 4px;
+  --shape-s: 8px;
+  --shape-m: 12px;
+  --shape-l: 16px;
+  --shape-l-inc: 20px;
+  --shape-xl: 28px;
+  --shape-xl-inc: 32px;
+  --shape-2xl: 48px;
+  --shape-full: 9999px;
+
+  /* Glass surfaces: translucent when the window is, solid otherwise. */
+  --glass: 74%;
+  --card: color-mix(in srgb, var(--zenapp-surface-container) var(--glass), transparent);
+  --card-high: color-mix(in srgb, var(--zenapp-surface-container-high) var(--glass), transparent);
+  --card-highest: color-mix(in srgb, var(--zenapp-surface-container-highest) calc(var(--glass) + 8%), transparent);
+
+  color-scheme: dark;
+  font-family: var(--md-font);
+  font-optical-sizing: auto;
+  color: var(--zenapp-on-surface);
+  background: transparent;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-scheme="light"] {
+  color-scheme: light;
+}
+
+:root[data-appearance="opaque"] {
+  --glass: 100%;
+  background: var(--zenapp-surface);
+}
+
+:root[data-mode="settings"] {
+  --glass: 100%;
+  background: var(--zenapp-surface-container);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  /* SubDialog injects in-content/common.css; neutralise its form styling. */
+  appearance: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--zenapp-secondary);
+  outline-offset: 2px;
+}
+
+/* Material Symbols (ligatures). Hidden entirely when the font is missing. */
+.icon {
+  font-family: var(--md-icon-font);
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  font-feature-settings: "liga";
+  font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+  display: inline-block;
+  flex: none;
+}
+
+:root.no-symbols .icon {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ type */
+
+.display {
+  font-size: clamp(44px, 6.4vw, 72px);
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variation-settings: "ROND" 100, "wdth" 100;
+  margin: 0;
+}
+
+.headline {
+  font-size: clamp(28px, 3.4vw, 36px);
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variation-settings: "ROND" 100;
+  margin: 0;
+}
+
+.title {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.body {
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--zenapp-on-surface-variant);
+  margin: 0;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.kicker {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--zenapp-primary);
+}
+
+/* ---------------------------------------------------------- buttons */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 24px;
+  border: none;
+  border-radius: var(--shape-full);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    border-radius var(--spring-fast-d) var(--spring-fast),
+    background-color var(--effects-d) var(--effects),
+    color var(--effects-d) var(--effects),
+    scale var(--spring-fast-d) var(--spring-fast);
+}
+
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  z-index: -1;
+  transition: opacity var(--effects-fast-d) linear;
+}
+
+.btn:hover::before {
+  opacity: 0.08;
+}
+
+.btn:active::before {
+  opacity: 0.12;
+}
+
+.btn:active {
+  border-radius: var(--shape-m);
+}
+
+.btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.btn .icon {
+  font-size: 20px;
+}
+
+.btn.filled {
+  background: var(--zenapp-primary);
+  color: var(--zenapp-on-primary);
+}
+
+.btn.tonal {
+  background: var(--zenapp-secondary-container);
+  color: var(--zenapp-on-secondary-container);
+}
+
+.btn.outlined {
+  background: transparent;
+  color: var(--zenapp-on-surface-variant);
+  box-shadow: inset 0 0 0 1px var(--zenapp-outline-variant);
+}
+
+.btn.text {
+  background: transparent;
+  color: var(--zenapp-primary);
+  padding: 0 16px;
+}
+
+.btn.danger {
+  background: var(--zenapp-error-container);
+  color: var(--zenapp-on-error-container);
+}
+
+.btn.medium {
+  height: 56px;
+  padding: 0 28px;
+  font-size: 16px;
+}
+
+.btn.medium .icon {
+  font-size: 24px;
+}
+
+.btn.medium:active {
+  border-radius: var(--shape-l);
+}
+
+.btn.large {
+  height: 72px;
+  padding: 0 36px 0 40px;
+  font-size: 20px;
+  font-weight: 650;
+  gap: 12px;
+}
+
+.btn.large .icon {
+  font-size: 28px;
+}
+
+.btn.large:active {
+  border-radius: var(--shape-l-inc);
+}
+
+.icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  border: none;
+  border-radius: var(--shape-full);
+  background: var(--card-highest);
+  color: var(--zenapp-on-surface-variant);
+  cursor: pointer;
+  transition: border-radius var(--spring-fast-d) var(--spring-fast), background-color var(--effects-d);
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--zenapp-on-surface) 12%, var(--card-highest));
+}
+
+.icon-btn:active {
+  border-radius: var(--shape-m);
+}
+
+/* ------------------------------------------------------------ layout */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 28px 8px;
+  flex: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.brand img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.brand .name {
+  font-size: 16px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pills {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pills span {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-outline-variant);
+  transition:
+    width var(--spring-default-d) var(--spring-default),
+    background-color var(--effects-d) var(--effects);
+}
+
+.pills span.done {
+  background: var(--zenapp-primary-container);
+}
+
+.pills span.active {
+  width: 32px;
+  background: var(--zenapp-primary);
+}
+
+.topbar .end {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.step {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 12px 28px 24px;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  opacity: 0;
+  translate: 48px 0;
+  pointer-events: none;
+  transition:
+    opacity var(--effects-d) var(--effects),
+    translate var(--spring-default-d) var(--spring-default);
+}
+
+.step.active {
+  opacity: 1;
+  translate: 0 0;
+  pointer-events: auto;
+}
+
+.step.before {
+  translate: -48px 0;
+}
+
+.step-inner {
+  width: min(980px, 100%);
+  margin: auto;
+}
+
+.step-head {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 28px 28px;
+}
+
+.actions .spacer {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------- welcome */
+
+.welcome {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) 1.1fr;
+  gap: clamp(24px, 5vw, 72px);
+  align-items: center;
+}
+
+.hero {
+  position: relative;
+  aspect-ratio: 1;
+  width: min(100%, 420px);
+  justify-self: center;
+  display: grid;
+  place-items: center;
+}
+
+.hero svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.hero .shape-back {
+  fill: var(--zenapp-tertiary-container);
+  opacity: 0.7;
+  transform-origin: 50% 50%;
+  animation: spin 58s linear infinite reverse;
+}
+
+.hero .shape-front {
+  fill: var(--zenapp-primary-container);
+  transform-origin: 50% 50%;
+  animation: spin 42s linear infinite;
+}
+
+.hero img {
+  position: relative;
+  width: 38%;
+  height: 38%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.28));
+  animation: bob 6s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes bob {
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+.welcome-text {
+  display: grid;
+  gap: 18px;
+  align-content: center;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px 0 12px;
+  border-radius: var(--shape-s);
+  background: var(--card-high);
+  color: var(--zenapp-on-surface-variant);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.chip .icon {
+  font-size: 18px;
+  color: var(--zenapp-primary);
+}
+
+.runtime {
+  font-size: 13px;
+  color: var(--zenapp-outline);
+}
+
+.welcome .cta {
+  margin-top: 12px;
+  justify-self: start;
+}
+
+/* ------------------------------------------------------- appearance */
+
+.choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.choice {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 14px 14px 18px;
+  border: none;
+  border-radius: var(--shape-xl);
+  background: var(--card);
+  text-align: start;
+  cursor: pointer;
+  outline: 3px solid transparent;
+  outline-offset: -3px;
+  transition:
+    border-radius var(--spring-default-d) var(--spring-default),
+    background-color var(--effects-d) var(--effects),
+    outline-color var(--effects-d) var(--effects);
+}
+
+.choice:hover {
+  background: var(--card-high);
+}
+
+.choice:active {
+  border-radius: var(--shape-l);
+}
+
+.choice[aria-checked="true"] {
+  background: color-mix(in srgb, var(--zenapp-secondary-container) calc(var(--glass) + 10%), transparent);
+  outline-color: var(--zenapp-primary);
+  border-radius: var(--shape-2xl);
+}
+
+.choice .check {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--shape-full);
+  display: grid;
+  place-items: center;
+  background: var(--zenapp-primary);
+  color: var(--zenapp-on-primary);
+  scale: 0;
+  transition: scale var(--spring-fast-d) var(--spring-fast);
+  z-index: 2;
+}
+
+.choice[aria-checked="true"] .check {
+  scale: 1;
+}
+
+.choice .check .icon {
+  font-size: 20px;
+}
+
+.choice .choice-text {
+  display: grid;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview {
+  position: relative;
+  aspect-ratio: 16 / 7.5;
+  max-height: 210px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 28%, color-mix(in srgb, var(--zenapp-primary) 80%, transparent) 0 22%, transparent 48%),
+    radial-gradient(circle at 78% 70%, color-mix(in srgb, var(--zenapp-tertiary) 85%, transparent) 0 20%, transparent 50%),
+    radial-gradient(circle at 60% 10%, color-mix(in srgb, var(--zenapp-secondary) 70%, transparent) 0 14%, transparent 40%),
+    var(--zenapp-surface-container-lowest);
+}
+
+.preview .win {
+  position: absolute;
+  inset: 13% 11%;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 26% 1fr;
+  gap: 8%;
+  padding: 7%;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.3);
+}
+
+.preview.glass .win {
+  background: color-mix(in srgb, var(--zenapp-surface) 42%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  outline: 1px solid color-mix(in srgb, var(--zenapp-on-surface) 12%, transparent);
+}
+
+.preview.solid .win {
+  background: var(--zenapp-surface-container);
+}
+
+.preview .col {
+  display: grid;
+  gap: 10%;
+  align-content: start;
+}
+
+.preview .line {
+  height: 9px;
+  border-radius: var(--shape-full);
+  background: color-mix(in srgb, var(--zenapp-on-surface) 72%, transparent);
+}
+
+.preview .line.short {
+  width: 60%;
+}
+
+.preview .line.accent {
+  background: var(--zenapp-primary);
+  width: 45%;
+}
+
+.panel {
+  margin-top: 16px;
+  border-radius: var(--shape-xl);
+  background: var(--card);
+  padding: 8px 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  min-height: 72px;
+}
+
+.row + .row {
+  border-top: 1px solid color-mix(in srgb, var(--zenapp-outline-variant) 55%, transparent);
+}
+
+.row .text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.row .text .title {
+  font-size: 16px;
+}
+
+.row .text .body {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.row.column {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.row.with-control {
+  align-items: flex-start;
+}
+
+.row.with-control .lead {
+  margin-top: 2px;
+}
+
+.row[hidden] {
+  display: none;
+}
+
+.lead {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--shape-m);
+  display: grid;
+  place-items: center;
+  background: var(--card-highest);
+  color: var(--zenapp-on-surface-variant);
+  flex: none;
+  transition:
+    border-radius var(--spring-default-d) var(--spring-default),
+    background-color var(--effects-d) var(--effects),
+    color var(--effects-d) var(--effects);
+}
+
+.row.on .lead {
+  border-radius: var(--shape-full);
+  background: var(--zenapp-primary-container);
+  color: var(--zenapp-on-primary-container);
+}
+
+.note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 14px 18px;
+  border-radius: var(--shape-l-inc);
+  background: color-mix(in srgb, var(--zenapp-tertiary-container) 58%, transparent);
+  color: var(--zenapp-on-tertiary-container);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.note .icon {
+  font-size: 20px;
+}
+
+/* Connected button group (M3 Expressive segmented). */
+.seg {
+  display: flex;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.seg button {
+  /* Content-sized basis: the selected segment grows to fit its check mark. */
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--shape-s);
+  background: var(--card-highest);
+  color: var(--zenapp-on-surface);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-radius var(--spring-fast-d) var(--spring-fast),
+    background-color var(--effects-d) var(--effects),
+    color var(--effects-d) var(--effects);
+}
+
+.seg button:first-child {
+  border-start-start-radius: var(--shape-full);
+  border-end-start-radius: var(--shape-full);
+}
+
+.seg button:last-child {
+  border-start-end-radius: var(--shape-full);
+  border-end-end-radius: var(--shape-full);
+}
+
+.seg button:hover {
+  background: color-mix(in srgb, var(--zenapp-on-surface) 10%, var(--card-highest));
+}
+
+.seg button:active {
+  border-radius: var(--shape-xs);
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--zenapp-secondary-container);
+  color: var(--zenapp-on-secondary-container);
+  border-radius: var(--shape-full);
+}
+
+.seg button .icon {
+  font-size: 18px;
+  width: 0;
+  opacity: 0;
+  transition: width var(--spring-fast-d) var(--spring-fast), opacity var(--effects-d);
+}
+
+.seg button[aria-pressed="true"] .icon {
+  width: 18px;
+  opacity: 1;
+}
+
+/* Switch (M3). */
+.switch {
+  position: relative;
+  flex: none;
+  width: 52px;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--zenapp-outline);
+  border-radius: var(--shape-full);
+  background: var(--zenapp-surface-container-highest);
+  cursor: pointer;
+  transition: background-color var(--effects-d) var(--effects), border-color var(--effects-d) var(--effects);
+}
+
+.switch .handle {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-outline);
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  transition:
+    left var(--spring-fast-d) var(--spring-fast),
+    width var(--spring-fast-d) var(--spring-fast),
+    height var(--spring-fast-d) var(--spring-fast),
+    background-color var(--effects-d) var(--effects);
+}
+
+.switch .handle .icon {
+  font-size: 16px;
+  color: var(--zenapp-on-primary-container);
+  opacity: 0;
+  transition: opacity var(--effects-d);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--zenapp-primary);
+  border-color: var(--zenapp-primary);
+}
+
+.switch[aria-checked="true"] .handle {
+  left: 22px;
+  width: 24px;
+  height: 24px;
+  background: var(--zenapp-on-primary);
+}
+
+.switch[aria-checked="true"] .handle .icon {
+  opacity: 1;
+  color: var(--zenapp-primary);
+}
+
+.switch:active .handle {
+  width: 28px;
+  height: 28px;
+  left: 2px;
+}
+
+.switch[aria-checked="true"]:active .handle {
+  left: 18px;
+}
+
+/* Slider (M3 Expressive: thick track, gapped bar handle, stop dot). */
+.slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  margin: 8px 4px 0;
+  cursor: pointer;
+  touch-action: none;
+  --value: 40%;
+}
+
+.slider .track {
+  height: 16px;
+  background: var(--zenapp-secondary-container);
+  flex: 1;
+  border-radius: var(--shape-xs) var(--shape-s) var(--shape-s) var(--shape-xs);
+  position: relative;
+}
+
+.slider .track::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  translate: 0 -50%;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-primary);
+}
+
+.slider .fill {
+  height: 16px;
+  width: calc(var(--value) - 8px);
+  min-width: 0;
+  background: var(--zenapp-primary);
+  border-radius: var(--shape-s) var(--shape-xs) var(--shape-xs) var(--shape-s);
+  flex: none;
+}
+
+.slider .knob {
+  flex: none;
+  width: 4px;
+  height: 44px;
+  margin: 0 6px;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-primary);
+  transition: width var(--spring-fast-d) var(--spring-fast);
+}
+
+.slider:active .knob,
+.slider.dragging .knob {
+  width: 2px;
+  margin: 0 7px;
+}
+
+.slider .bubble {
+  position: absolute;
+  left: var(--value);
+  bottom: 52px;
+  translate: -50% 0;
+  padding: 6px 12px;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-inverse-surface);
+  color: var(--zenapp-inverse-on-surface);
+  font-size: 13px;
+  font-weight: 650;
+  opacity: 0;
+  scale: 0.6;
+  pointer-events: none;
+  transition: opacity var(--effects-fast-d), scale var(--spring-fast-d) var(--spring-fast);
+}
+
+.slider.dragging .bubble,
+.slider:focus-visible .bubble {
+  opacity: 1;
+  scale: 1;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  width: 100%;
+}
+
+.control {
+  display: grid;
+  gap: 10px;
+}
+
+.control .label {
+  color: var(--zenapp-on-surface-variant);
+}
+
+/* Wavy linear progress (indeterminate). */
+.wavy {
+  position: relative;
+  height: 12px;
+  width: 100%;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.wavy svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% + 40px);
+  height: 12px;
+  animation: wave 900ms linear infinite;
+}
+
+.wavy path {
+  fill: none;
+  stroke: var(--zenapp-primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+@keyframes wave {
+  to {
+    translate: -40px 0;
+  }
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--zenapp-primary);
+}
+
+.status.bad {
+  color: var(--zenapp-error);
+}
+
+/* ------------------------------------------------------------- keys */
+
+.keys-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--shape-l-inc);
+  background: var(--card);
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: var(--shape-s);
+  background: var(--card-highest);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--zenapp-outline-variant) 90%, transparent);
+  color: var(--zenapp-on-surface);
+  font: 650 13px/1 var(--md-font);
+}
+
+/* ------------------------------------------------------------- done */
+
+.done {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 18px;
+  max-width: 640px;
+  margin: auto;
+}
+
+.burst {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: grid;
+  place-items: center;
+}
+
+.burst svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.burst path {
+  fill: var(--zenapp-primary);
+  transform-origin: 50% 50%;
+  scale: 0.2;
+  rotate: -90deg;
+  transition:
+    scale var(--spring-slow-d) var(--spring-fast),
+    rotate 1200ms var(--spring-default);
+}
+
+.step.active .burst path {
+  scale: 1;
+  rotate: 0deg;
+}
+
+.burst .icon {
+  position: relative;
+  font-size: 88px;
+  color: var(--zenapp-on-primary);
+  font-variation-settings: "FILL" 1, "wght" 700, "GRAD" 0, "opsz" 48;
+  scale: 0;
+  transition: scale var(--spring-slow-d) var(--spring-fast) 180ms;
+}
+
+.step.active .burst .icon {
+  scale: 1;
+}
+
+/* -------------------------------------------------------- settings */
+
+:root[data-mode="settings"] body {
+  background: transparent;
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 20px 12px 24px;
+  flex: none;
+}
+
+.settings-head img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.settings-head .titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-head .titles .body {
+  font-size: 13px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  flex: none;
+  border-bottom: 1px solid var(--zenapp-outline-variant);
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  height: 48px;
+  border: none;
+  background: transparent;
+  color: var(--zenapp-on-surface-variant);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--shape-m) var(--shape-m) 0 0;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: color-mix(in srgb, var(--zenapp-on-surface) 6%, transparent);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--zenapp-primary);
+}
+
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--zenapp-primary);
+  translate: -50% 0;
+  transition: width var(--spring-default-d) var(--spring-default);
+}
+
+.tab[aria-selected="true"]::after {
+  width: 56%;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+}
+
+.settings-body section {
+  display: none;
+}
+
+.settings-body section.active {
+  display: block;
+  animation: section-in var(--spring-default-d) var(--spring-default);
+}
+
+@keyframes section-in {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+:root[data-mode="settings"] .choices {
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+:root[data-mode="settings"] .preview {
+  aspect-ratio: 16 / 8;
+  max-height: 128px;
+}
+
+:root[data-mode="settings"] .choice .body {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+:root[data-mode="settings"] .control-grid {
+  grid-template-columns: 1fr;
+}
+
+:root[data-mode="settings"] .panel {
+  background: var(--zenapp-surface-container-high);
+}
+
+:root[data-mode="settings"] .choice {
+  background: var(--zenapp-surface-container-high);
+}
+
+:root[data-mode="settings"] .key-row {
+  background: var(--zenapp-surface-container-high);
+}
+
+:root[data-mode="settings"] .keys-grid {
+  grid-template-columns: 1fr;
+}
+
+.about {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+  padding: 16px 20px;
+}
+
+.about dt {
+  color: var(--zenapp-on-surface-variant);
+}
+
+.about dd {
+  margin: 0;
+  user-select: text;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+/* Snackbar. */
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  translate: -50% calc(100% + 48px);
+  visibility: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 8px 6px 18px;
+  border-radius: var(--shape-m);
+  background: var(--zenapp-inverse-surface);
+  color: var(--zenapp-inverse-on-surface);
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+  transition:
+    translate var(--spring-default-d) var(--spring-default),
+    visibility 0s linear var(--spring-default-d);
+  z-index: 10;
+}
+
+.snackbar.shown {
+  translate: -50% 0;
+  visibility: visible;
+  transition: translate var(--spring-default-d) var(--spring-default);
+}
+
+.snackbar .btn.text {
+  color: var(--zenapp-inverse-primary);
+}
+
+/* ------------------------------------------------------ responsive */
+
+@media (max-width: 760px) {
+  .welcome {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .hero {
+    width: min(64vw, 280px);
+  }
+  .welcome .cta {
+    justify-self: center;
+  }
+  .chips {
+    justify-content: center;
+  }
+  .choices,
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+}

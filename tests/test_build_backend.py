@@ -64,6 +64,22 @@ class BuildBackendTests(unittest.TestCase):
                 )
                 self.assertIn("zen_app_runtime/workflow.py", names)
                 self.assertIn("zen_app_runtime/_secure_fs.py", names)
+                for app_mode_file in (
+                    "appmode/commands.py",
+                    "appmode/zen_internet.py",
+                    "appmode/desktop_look.py",
+                    "appmode/profile/userChrome.css",
+                    "appmode/data/zen-internet-styles.json",
+                    "appmode/data/LICENSE-zen-internet.txt",
+                    "appmode/addon/manifest.json",
+                    "appmode/addon/api.js",
+                    "appmode/addon/modules/ZenApp.sys.mjs",
+                    "appmode/addon/modules/Styles.sys.mjs",
+                    "appmode/addon/content/studio.html",
+                    "appmode/addon/themes/spotify-glass.css",
+                ):
+                    self.assertIn(f"zen_app_runtime/{app_mode_file}", names)
+                self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
                 self.assertIn("zen_app_runtime-0.1.0.dist-info/RECORD", names)
                 self.assertFalse(any(name.endswith((".xpi", ".zip", ".tar.xz", ".pkg.tar.zst")) for name in names))
                 self.assertFalse(any("gecko-runtime-candidate.json" in name for name in names))

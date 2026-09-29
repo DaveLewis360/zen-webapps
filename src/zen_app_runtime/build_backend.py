@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BROWSER_ADAPTER_RESOURCE = Path("browser_adapter_bundle")
 RUNTIME_CANDIDATE_RESOURCE = Path("runtime_candidates")
 CHROMIUM_SHELL_RESOURCE = Path("chromium_shell")
+APP_MODE_PACKAGE = Path("appmode")
 
 
 def _package_sources(root: Path) -> list[Path]:
@@ -33,6 +34,13 @@ def _package_sources(root: Path) -> list[Path]:
     chromium_shell = package / CHROMIUM_SHELL_RESOURCE
     if chromium_shell.is_dir():
         sources.extend(path for path in chromium_shell.rglob("*") if path.is_file())
+    app_mode = package / APP_MODE_PACKAGE
+    if app_mode.is_dir():
+        sources.extend(
+            path
+            for path in app_mode.rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix not in (".pyc", ".pyo")
+        )
     return sorted(sources)
 
 
