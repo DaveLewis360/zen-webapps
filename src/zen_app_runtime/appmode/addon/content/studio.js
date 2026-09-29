@@ -500,16 +500,26 @@ function customCssPanel() {
     if (css.state === "loaded") {
       const name = css.name || css.fileName || t("css.pasted");
       const scope = css.sections ? t("css.scope.sections", { matching: css.matching, total: css.sections }) : t("css.scope.app");
-      summary.textContent = [name, formatBytes(css.bytes), scope, ...(css.aliases || [])].filter(Boolean).join(" · ");
+      const extras = [
+        css.palette?.applied ? t("css.palette") : null,
+        css.imports?.inlined?.length ? t("css.imports", { n: css.imports.inlined.length }) : null,
+      ];
+      summary.textContent = [name, formatBytes(css.bytes), scope, ...extras, ...(css.aliases || [])].filter(Boolean).join(" · ");
     } else if (css.state === "error") {
       summary.textContent = t(`css.error.${css.error || "unknown"}`);
     } else {
       summary.textContent = t("css.desc");
     }
     summary.classList.toggle("bad", css.state === "error");
+    const hostsOf = urls => (urls || []).map(url => url.replace(/^[a-z]+:\/\/([^/]+).*$/i, "$1")).join(", ") || "?";
     warnings.replaceChildren(
       ...(css.state === "loaded" ? css.warnings || [] : []).map(code =>
-        h("div", { class: "css-warning" }, icon("warning"), t(`css.warn.${code}`, { sites: (css.elsewhere || []).join(", ") || "?" }))
+        h(
+          "div",
+          { class: "css-warning" },
+          icon("warning"),
+          t(`css.warn.${code}`, { sites: code === "importFailed" ? hostsOf(css.imports?.failed) : (css.elsewhere || []).join(", ") || "?" })
+        )
       )
     );
     upload.lastChild.textContent = has ? t("css.replace") : t("css.upload");

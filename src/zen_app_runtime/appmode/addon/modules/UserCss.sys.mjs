@@ -1,28 +1,41 @@
 /* zen-app-runtime app mode: the user's own CSS for an app.
  *
- * An uploaded file (plain CSS or a Stylus userstyle) is kept as written in
- * <library>/<id>.css and compiled at runtime into one user sheet:
- *  - The whole sheet is wrapped in @-moz-document for the app's own hosts.
- *    Style-sheet-service user sheets apply to every document, the app's
- *    settings pages and the browser chrome included, so nothing may leave
- *    that scope: the file is rebuilt block by block with our own balanced
- *    braces, and whatever it leaves open at the end is closed first.
- *  - @-moz-document sections of the file are kept, nested inside the scope
- *    (Gecko treats nested document rules as AND). A section for a site the
- *    app now reaches elsewhere (messenger.com → facebook.com/messages) also
- *    matches the new location.
- *  - Declarations become !important. Stylus injects author styles; in a user
- *    sheet a normal declaration loses to the site's own CSS.
+ * An uploaded file (plain CSS, a Stylus userstyle or a Vencord/Vesktop theme)
+ * is kept as written in <library>/<id>.css. compileUserCss() turns it into a
+ * "program": the file split into chunks, each with the @-moz-document
+ * conditions it sits in. The ZenAppCss actor evaluates those conditions for
+ * every page and loads the matching chunks as one AUTHOR sheet of that page,
+ * the way Stylus and Vencord apply styles: the CSS cascades exactly as its
+ * author wrote it, after the site's own styles. (Author sheets cannot use
+ * @-moz-document, which is why the matching happens in JavaScript.)
+ *
+ * On the way:
+ *  - Only the app's own pages get the CSS; plain rules apply to all of them.
+ *  - A section for a site the app now reaches elsewhere (messenger.com →
+ *    facebook.com/messages) also matches the new location.
+ *  - https @imports are inlined from `imports` (fetched and cached by the
+ *    runtime); the others are listed as pending. Relative url()s of imported
+ *    files are made absolute.
+ *  - The Caelestia colour block (between /* BEGIN CAELESTIA COLORS * / and
+ *    /* END CAELESTIA COLORS * /, as used by Vencord/Vesktop themes) is filled
+ *    with the current wallpaper colours.
+ *  - The file is rebuilt block by block with balanced braces, so no chunk can
+ *    leak into another.
  * Pure JavaScript without Gecko APIs, so node can unit-test it.
  */
 
 export const MAX_CUSTOM_CSS_BYTES = 512 * 1024;
+export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+export const MAX_IMPORT_DEPTH = 3;
+/** sharedData key the parent publishes the compiled program under. */
+export const CUSTOM_CSS_KEY = "zenapp:customCss";
 
 const IMPORT_MARKER = /^\/\* zen-app: imported from "([^"\n]*)" \*\/\r?\n?/;
 const DOCUMENT_RULES = new Set(["-moz-document", "document"]);
 const GROUP_RULES = new Set(["media", "supports", "layer", "container", "scope", "starting-style"]);
 const CLOSERS = { "{": "}", "(": ")", "[": "]" };
 const LEADING_COMMENTS = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*/;
+const PALETTE_BLOCK = /(\/\*\s*BEGIN CAELESTIA COLOU?RS\s*\*\/)([\s\S]*?)(\/\*\s*END CAELESTIA COLOU?RS\s*\*\/)/gi;
 
 /* ------------------------------------------------------------- lexing */
 
@@ -181,7 +194,7 @@ function scanItems(src, from, to) {
       start = i;
       continue;
     } else if (c === "}") {
-      items.push({ kind: "stray", start, end: i + 1 }); // dropped: it would close our scope
+      items.push({ kind: "stray", start, end: i + 1 }); // dropped: it would close someone else's block
       start = i + 1;
     }
     i++;
@@ -201,51 +214,81 @@ function cssString(value) {
   return `"${String(value).replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\a ")}"`;
 }
 
-/* ------------------------------------------------------- declarations */
+/* ------------------------------------------------------ palette block */
 
-/** One declaration with !important added (unless present or not a declaration). */
-function important(text) {
-  const stack = [];
-  let colon = -1;
-  let last = -1;
-  for (let i = 0; i < text.length; ) {
-    const end = atomEnd(text, i, text.length);
-    if (end >= 0) {
-      if (!(text[i] === "/" && text[i + 1] === "*")) {
-        last = end - 1;
+/**
+ * Fill the Caelestia colour blocks with `colors` ({primary: "#rrggbb", ...}).
+ * Only `--name: #hex;` declarations inside the markers change.
+ */
+export function applyPalette(src, colors) {
+  let blocks = 0;
+  let applied = 0;
+  const text = String(src).replace(PALETTE_BLOCK, (all, begin, body, end) => {
+    blocks++;
+    if (!colors) {
+      return all;
+    }
+    const filled = body.replace(
+      /(--([A-Za-z][\w-]*)\s*:\s*)#[0-9a-fA-F]{3,8}(?=\s*(?:!\s*important\s*)?[;}])/g,
+      (declaration, head, name) => {
+        const value = colors[name];
+        if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
+          return declaration;
+        }
+        applied++;
+        return head + value.toLowerCase();
       }
-      i = end;
-      continue;
-    }
-    const c = text[i];
-    if (!stack.length && c === ";") {
-      break;
-    }
-    if (c in CLOSERS) {
-      stack.push(CLOSERS[c]);
-    } else if (c === stack[stack.length - 1]) {
-      stack.pop();
-    } else if (!stack.length && c === ":" && colon < 0) {
-      colon = i;
-    }
-    if (!/\s/.test(c)) {
-      last = i;
-    }
-    i++;
+    );
+    return begin + filled + end;
+  });
+  return { text, blocks, applied };
+}
+
+/* ------------------------------------------------------------ imports */
+
+function parseImport(text) {
+  const match =
+    /^@import\s+(?:url\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^)'"\s]*))\s*\)|"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*([\s\S]*?)\s*;?\s*$/i.exec(
+      text.replace(LEADING_COMMENTS, "").trim()
+    );
+  if (!match) {
+    return null;
   }
-  if (colon < 0 || last <= colon) {
-    return text;
+  const url = [match[1], match[2], match[3], match[4], match[5]].find(value => value !== undefined) ?? "";
+  return { url: url.replace(/\\([\s\S])/g, "$1"), condition: match[6] || "" };
+}
+
+function resolveUrl(url, base) {
+  try {
+    return new URL(url, base || undefined).href;
+  } catch {
+    return null;
   }
-  const head = text.slice(0, last + 1);
-  const name = text.slice(0, colon).replace(/\/\*[\s\S]*?\*\//g, "").trim();
-  if (!name || name.startsWith("@") || /!\s*important$/i.test(head)) {
-    return text;
-  }
-  return `${head} !important${text.slice(last + 1)}`;
+}
+
+/** Make the relative url()s of a file fetched from `base` absolute. */
+export function absolutizeUrls(text, base) {
+  return String(text).replace(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]*))\s*\)/gi, (all, dq, sq, bare) => {
+    const value = dq ?? sq ?? bare ?? "";
+    if (!value || value.startsWith("#") || /^[a-z][\w+.-]*:/i.test(value)) {
+      return all;
+    }
+    const resolved = resolveUrl(value, base);
+    return resolved ? `url(${cssString(resolved)})` : all;
+  });
 }
 
 /* ---------------------------------------------------------- rebuild */
 
+function flush(ctx) {
+  // A chunk of nothing but comments and whitespace does not need a sheet.
+  if (ctx.current.replace(/\/\*[\s\S]*?\*\//g, "").trim()) {
+    ctx.chunks.push({ levels: ctx.levels.map(level => level.map(condition => ({ ...condition }))), css: ctx.current });
+  }
+  ctx.current = "";
+}
+
+/** A statement inside a rule or group body (imports only work at top level). */
 function statement(text, ctx) {
   const name = atName(text);
   if (name === "import") {
@@ -262,12 +305,13 @@ function declarations(src, from, to, ctx) {
     if (item.kind === "block") {
       out += block(src, item, ctx, "declarations");
     } else if (item.kind !== "stray") {
-      out += atName(text) ? statement(text, ctx) : important(text);
+      out += atName(text) ? statement(text, ctx) : text;
     }
   }
   return out;
 }
 
+/** Rules inside a group rule (@media, @supports, ...). */
 function rules(src, from, to, ctx) {
   let out = "";
   for (const item of scanItems(src, from, to)) {
@@ -289,7 +333,9 @@ function block(src, item, ctx, context) {
   const open = item.open + 1;
   const close = item.close;
   if (name && DOCUMENT_RULES.has(name)) {
-    return context === "rules" ? documentRule(prelude, src, open, close, ctx) : "";
+    // Only possible at the top level or directly inside another one.
+    ctx.warnings.add("nestedDocument");
+    return "";
   }
   if (!ctx.section) {
     ctx.plainBlocks++;
@@ -304,6 +350,64 @@ function block(src, item, ctx, context) {
   }
   ctx.rules++;
   return `${prelude}{${declarations(src, open, close, ctx)}}`;
+}
+
+/** The top level of a file or the body of an @-moz-document rule. */
+function sectionRules(src, from, to, ctx) {
+  for (const item of scanItems(src, from, to)) {
+    const text = src.slice(item.start, item.end);
+    if (item.kind === "block") {
+      const prelude = src.slice(item.start, item.open);
+      const name = atName(prelude);
+      if (name && DOCUMENT_RULES.has(name)) {
+        documentSection(prelude, src, item.open + 1, item.close, ctx);
+      } else {
+        ctx.current += block(src, item, ctx, "rules");
+      }
+    } else if (item.kind === "statement") {
+      const name = atName(text);
+      if (name === "namespace") {
+        ctx.namespaces.add(text.replace(LEADING_COMMENTS, "").trim());
+      } else if (name === "import") {
+        importRule(text, ctx);
+      } else if (name !== "charset") {
+        ctx.current += text;
+      }
+    } else if (item.kind === "tail") {
+      ctx.current += text;
+    }
+  }
+}
+
+function importRule(text, ctx) {
+  const parsed = parseImport(text);
+  const url = parsed ? resolveUrl(parsed.url, ctx.base) : null;
+  if (!url || !/^https:\/\//i.test(url) || ctx.depth >= MAX_IMPORT_DEPTH) {
+    ctx.warnings.add("import");
+    return;
+  }
+  const imported = ctx.imports[url];
+  if (typeof imported !== "string") {
+    ctx.pending.add(url);
+    return;
+  }
+  if (!imported) {
+    ctx.failed.add(url); // fetching it failed: continue without it
+    return;
+  }
+  ctx.inlined.add(url);
+  const source = terminate(absolutizeUrls(imported.replace(/^\uFEFF/, "").replace(/\u0000/g, "\uFFFD"), url));
+  const saved = { base: ctx.base, depth: ctx.depth };
+  ctx.base = url;
+  ctx.depth++;
+  const condition = parsed.condition.trim();
+  if (condition && !/^(layer|supports)\b/i.test(condition)) {
+    ctx.current += `@media ${condition} {${rules(source, 0, source.length, ctx)}}`;
+  } else {
+    sectionRules(source, 0, source.length, ctx);
+  }
+  ctx.base = saved.base;
+  ctx.depth = saved.depth;
 }
 
 /* ------------------------------------------------ @-moz-document */
@@ -366,6 +470,7 @@ function samples(ctx) {
   return [ctx.startUrl, ...ctx.hosts.map(host => `https://${host}/`), ...Object.values(ctx.aliases).flat().map(t => `${t}/`)].filter(Boolean);
 }
 
+/** Static evaluation against the app's hosts, for the summary and warnings. */
 function evaluate(part, ctx) {
   const { fn, arg } = part;
   if (arg === null) {
@@ -404,9 +509,17 @@ function evaluate(part, ctx) {
   return { matches: false, add: [] };
 }
 
-function documentRule(prelude, src, open, close, ctx) {
+function documentSection(prelude, src, open, close, ctx) {
   const parts = splitConditions(prelude.replace(LEADING_COMMENTS, "").replace(/^@[-\w]+/, ""));
-  const conditions = parts.map(part => part.text);
+  const conditions = [];
+  const seen = new Set();
+  const add = (fn, arg) => {
+    const key = `${fn}\u0000${arg}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      conditions.push({ fn, arg });
+    }
+  };
   let matches = false;
   const elsewhere = [];
   for (const part of parts) {
@@ -419,11 +532,11 @@ function documentRule(prelude, src, open, close, ctx) {
       const shown = result.alias.targets[0].replace(/^[a-z]+:\/\/(www\.)?/i, "");
       ctx.aliasesUsed.add(`${result.alias.source} → ${shown}`);
     }
+    if (part.fn && part.arg !== null) {
+      add(part.fn, part.arg);
+    }
     for (const [fn, value] of result.add) {
-      const condition = `${fn}(${cssString(value)})`;
-      if (!conditions.includes(condition)) {
-        conditions.push(condition);
-      }
+      add(fn, value);
     }
   }
   ctx.sections++;
@@ -432,10 +545,75 @@ function documentRule(prelude, src, open, close, ctx) {
   } else {
     elsewhere.forEach(host => ctx.elsewhere.add(host));
   }
+  if (!conditions.length) {
+    return;
+  }
+  flush(ctx);
+  ctx.levels.push(conditions);
   ctx.section++;
-  const body = rules(src, open, close, ctx);
+  sectionRules(src, open, close, ctx);
+  flush(ctx);
   ctx.section--;
-  return conditions.length ? `@-moz-document ${conditions.join(", ")} {${body}}` : "";
+  ctx.levels.pop();
+}
+
+/* ---------------------------------------------------------- selecting */
+
+function conditionMatches({ fn, arg }, host, url) {
+  if (typeof arg !== "string") {
+    return false;
+  }
+  switch (fn) {
+    case "domain": {
+      const domain = normalizeHost(arg);
+      return !!domain && (host === domain || host.endsWith("." + domain));
+    }
+    case "url-prefix":
+      return url.startsWith(arg);
+    case "url":
+      return url === arg;
+    case "regexp":
+      try {
+        return new RegExp(`^(?:${arg})$`).test(url);
+      } catch {
+        return false;
+      }
+    default:
+      return false;
+  }
+}
+
+function inScope(scope, host, url) {
+  for (const pattern of scope?.hosts || []) {
+    if (pattern.startsWith("*.") ? host === pattern.slice(2) || host.endsWith(pattern.slice(1)) : host === pattern) {
+      return true;
+    }
+  }
+  return (scope?.prefixes || []).some(prefix => url.startsWith(prefix));
+}
+
+/** The CSS a page gets from a program ("" if none). */
+export function selectCss(program, url) {
+  if (!program || !Array.isArray(program.chunks)) {
+    return "";
+  }
+  let host;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return "";
+    }
+    host = normalizeHost(parsed.hostname);
+  } catch {
+    return "";
+  }
+  if (!inScope(program.scope, host, url)) {
+    return "";
+  }
+  const parts = program.chunks
+    .filter(chunk => chunk.levels.every(level => level.some(condition => conditionMatches(condition, host, url))))
+    .map(chunk => chunk.css);
+  return parts.length ? [...(program.namespaces || []), ...parts].join("\n") : "";
 }
 
 /* ------------------------------------------------------------- API */
@@ -478,13 +656,15 @@ export function stripImportHeader(src) {
 
 /**
  * Compile an uploaded CSS for an app.
- * hosts: the app's hostnames; aliases: {oldDomain: [url prefixes it moved to]};
- * startUrl: used to evaluate regexp() sections.
- * Returns {css, info} where css is "" when there is nothing to apply.
+ * hosts: the app's host patterns; aliases: {oldDomain: [url prefixes it moved
+ * to]}; startUrl: used to judge regexp() sections; colors: the palette for
+ * the Caelestia colour block; imports: {https url: fetched text ("" = failed)}.
+ * Returns {program, info}; program is null when there is nothing to apply.
  */
-export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "" } = {}) {
+export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "", colors = null, imports = {} } = {}) {
+  const patterns = [...new Set(hosts.map(h => normalizeHost(h)).filter(h => /^(\*\.)?[a-z0-9.-]+$/.test(h)))];
   const ctx = {
-    hosts: [...new Set(hosts.map(h => normalizeHost(String(h).replace(/^\*\./, ""))).filter(h => /^[a-z0-9.-]+$/.test(h)))],
+    hosts: [...new Set(patterns.map(h => h.replace(/^\*\./, "")))],
     aliases: Object.fromEntries(
       Object.entries(aliases || {}).map(([source, targets]) => [
         normalizeHost(source),
@@ -492,16 +672,28 @@ export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "" 
       ])
     ),
     startUrl: String(startUrl || ""),
+    imports: imports || {},
     warnings: new Set(),
     elsewhere: new Set(),
     aliasesUsed: new Set(),
+    pending: new Set(),
+    inlined: new Set(),
+    failed: new Set(),
+    namespaces: new Set(),
+    chunks: [],
+    levels: [],
+    current: "",
+    base: null,
+    depth: 0,
     sections: 0,
     matching: 0,
     rules: 0,
     plainBlocks: 0,
     section: 0,
   };
-  const src = terminate(stripImportHeader(String(input ?? "")).replace(/^\uFEFF/, "").replace(/\u0000/g, "\uFFFD"));
+  const raw = terminate(stripImportHeader(String(input ?? "")).replace(/^\uFEFF/, "").replace(/\u0000/g, "\uFFFD"));
+  const palette = applyPalette(raw, colors);
+  const src = palette.text;
   const meta = userStyleMeta(src);
   if (meta.preprocessor && !/^(default|uso)$/i.test(meta.preprocessor)) {
     ctx.warnings.add("preprocessor");
@@ -509,24 +701,13 @@ export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "" 
   if (meta.vars) {
     ctx.warnings.add("vars");
   }
-  const namespaces = [];
-  let body = "";
-  for (const item of scanItems(src, 0, src.length)) {
-    const text = src.slice(item.start, item.end);
-    if (item.kind === "block") {
-      body += block(src, item, ctx, "rules");
-    } else if (item.kind === "statement") {
-      if (atName(text) === "namespace") {
-        namespaces.push(text.replace(LEADING_COMMENTS, "").trim());
-      } else {
-        body += statement(text, ctx);
-      }
-    } else if (item.kind === "tail") {
-      body += text;
-    }
-  }
+  sectionRules(src, 0, src.length, ctx);
+  flush(ctx);
   if (ctx.sections && !ctx.matching && !ctx.plainBlocks) {
     ctx.warnings.add("noMatch");
+  }
+  if (ctx.failed.size) {
+    ctx.warnings.add("importFailed");
   }
   const info = {
     name: meta.name || null,
@@ -538,14 +719,15 @@ export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "" 
     warnings: [...ctx.warnings],
     elsewhere: [...ctx.elsewhere].slice(0, 6),
     aliases: [...ctx.aliasesUsed],
+    imports: { pending: [...ctx.pending], inlined: [...ctx.inlined], failed: [...ctx.failed] },
+    palette: { blocks: palette.blocks, applied: palette.applied },
   };
-  const scope = [
-    ...ctx.hosts.map(host => `domain(${cssString(host)})`),
-    ...Object.values(ctx.aliases).flat().map(target => `url-prefix(${cssString(target)})`),
-  ];
-  if (!scope.length || !(ctx.rules || ctx.plainBlocks || ctx.sections)) {
-    return { css: "", info };
+  const prefixes = [...new Set(Object.values(ctx.aliases).flat())];
+  if (!(patterns.length || prefixes.length) || !ctx.chunks.length) {
+    return { program: null, info };
   }
-  const css = [...namespaces, "/* zen-app: custom CSS */", `@-moz-document ${[...new Set(scope)].join(", ")} {`, body, "}", ""].join("\n");
-  return { css, info };
+  return {
+    program: { version: 1, scope: { hosts: patterns, prefixes }, namespaces: [...ctx.namespaces], chunks: ctx.chunks },
+    info,
+  };
 }

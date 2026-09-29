@@ -7,12 +7,15 @@ import {
   resolvedWindowChrome,
   settingsToPrefs,
 } from "resource://zenapp/modules/Config.sys.mjs";
-import { paletteToCSSVariables, resolvePalette } from "resource://zenapp/modules/Palette.sys.mjs";
+import { paletteColors, paletteToCSSVariables, resolvePalette } from "resource://zenapp/modules/Palette.sys.mjs";
 import { Scope, openExternally } from "resource://zenapp/modules/Routing.sys.mjs";
 import { getLocale, setLocale, t } from "resource://zenapp/modules/Strings.sys.mjs";
 import { StyleCatalog, dataSheetURI, featureKey } from "resource://zenapp/modules/Styles.sys.mjs";
 import {
+  CUSTOM_CSS_KEY,
   MAX_CUSTOM_CSS_BYTES,
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_DEPTH,
   compileUserCss,
   importHeader,
   importedFrom,
@@ -23,7 +26,24 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
   GMPInstallManager: "resource://gre/modules/GMPInstallManager.sys.mjs",
+  clearInterval: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setInterval: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
+
+/** How long a downloaded @import of a custom CSS is used before re-fetching. */
+const IMPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** How often the wallpaper colour scheme is checked for changes. */
+const SCHEME_POLL_MS = 2000;
+
+function sha256Hex(text) {
+  const hasher = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+  hasher.init(Ci.nsICryptoHash.SHA256);
+  const bytes = new TextEncoder().encode(text);
+  hasher.update(bytes, bytes.length);
+  return Array.from(hasher.finish(false), c => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+}
 
 const AlertNotification = Components.Constructor(
   "@mozilla.org/alert-notification;1",
@@ -60,6 +80,12 @@ class ZenAppRuntime {
   _customCssText = null;
   _customCssStamp = null;
   _customCssLoading = null;
+  _customCssKey = null;
+  _cssImports = {};
+  _cssImportsChecked = new Set();
+  _cssActor = false;
+  _schemeStamp = null;
+  _schemeTimer = null;
   _observers = [];
   _pendingAction = null;
   _widevinePromise = null;
@@ -92,10 +118,13 @@ class ZenAppRuntime {
     this.#applyPermissions();
     const catalog = this.store.config.zenInternet || {};
     this.styles = catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
+    this.#registerCssActor();
     await this.#reloadCustomCss();
-    this.#registerStyles();
     this.#registerCommandLine();
     await this.refreshPalette();
+    this.#registerStyles();
+    this.#refreshCssImports();
+    this.#watchScheme();
     this._pendingAction = await this.store.takePendingAction();
     this.#observeWindows();
     this.#watchDownloads().catch(error => console.error("zen-app: downloads", error));
@@ -114,7 +143,25 @@ class ZenAppRuntime {
         // ignore
       }
     }
+    if (this._schemeTimer) {
+      lazy.clearInterval(this._schemeTimer);
+      this._schemeTimer = null;
+    }
     this.#unregisterStyles();
+    try {
+      Services.ppmm.sharedData.delete(CUSTOM_CSS_KEY);
+      Services.ppmm.sharedData.flush();
+    } catch {
+      // ignore
+    }
+    if (this._cssActor) {
+      try {
+        ChromeUtils.unregisterWindowActor("ZenAppCss");
+      } catch {
+        // ignore
+      }
+      this._cssActor = false;
+    }
     try {
       Services.catMan.deleteCategoryEntry("command-line-handler", COMMAND_LINE_CATEGORY_ENTRY, false);
       Components.manager
@@ -458,6 +505,8 @@ class ZenAppRuntime {
     for (const appWindow of this.windows) {
       appWindow.applySettings();
     }
+    // A theme with a Caelestia colour block follows the new colours too.
+    this.#publishCustomCss();
     this.#emit("palette");
   }
 
@@ -518,13 +567,8 @@ class ZenAppRuntime {
         register(Services.io.newURI(`resource://zenapp/themes/${extra.file}`));
       }
     }
-    // Last, so the user's own rules win over the catalog and the extras.
-    if (this.settings.customCss !== false && this._customCssText !== null) {
-      const { css } = compileUserCss(this._customCssText, this.#customCssScope());
-      if (css) {
-        register(dataSheetURI(css));
-      }
-    }
+    // The user's own CSS goes into the pages themselves (ZenAppCss actor).
+    this.#publishCustomCss();
   }
 
   #unregisterStyles() {
@@ -615,9 +659,10 @@ class ZenAppRuntime {
     }
     try {
       const text = await IOUtils.readUTF8(path);
-      const { info } = compileUserCss(text, this.#customCssScope());
       this._customCssText = text;
-      this.customCss = { state: "loaded", bytes: stat.size, fileName: importedFrom(text), ...info };
+      this.customCss = { state: "loaded", bytes: stat.size, fileName: importedFrom(text) };
+      // Imports already downloaded earlier: no flash of the unstyled theme.
+      await this.#loadCssImports({ network: false });
     } catch (error) {
       console.error("zen-app: cannot read the custom CSS", error);
       this.customCss = { state: "error", error: "unreadable", bytes: stat.size };
@@ -626,9 +671,207 @@ class ZenAppRuntime {
   }
 
   async #customCssChanged() {
-    this.#registerStyles();
+    this.#publishCustomCss();
+    this.#refreshCssImports();
     this.#emit("customCss");
     await this.#writeStatus();
+  }
+
+  #compileCustomCss() {
+    return compileUserCss(this._customCssText, {
+      ...this.#customCssScope(),
+      colors: paletteColors(this.palette),
+      imports: this._cssImports,
+    });
+  }
+
+  #registerCssActor() {
+    try {
+      ChromeUtils.registerWindowActor("ZenAppCss", {
+        parent: { esModuleURI: "resource://zenapp/actors/ZenAppCssParent.sys.mjs" },
+        child: {
+          esModuleURI: "resource://zenapp/actors/ZenAppCssChild.sys.mjs",
+          events: { DOMDocElementInserted: {} },
+        },
+        allFrames: true,
+        messageManagerGroups: ["browsers"],
+        // It only reads the published CSS and loads it into its own page.
+        safeForUntrustedWebProcess: true,
+      });
+      this._cssActor = true;
+    } catch (error) {
+      console.error("zen-app: cannot register the custom CSS actor", error);
+    }
+  }
+
+  /**
+   * Compile the custom CSS and hand it to the pages: sharedData for pages
+   * that load from now on, a message for the ones already open. Returns true
+   * when what the pages get changed.
+   */
+  #publishCustomCss() {
+    let program = null;
+    if (this._customCssText !== null && this.customCss.state === "loaded") {
+      const { program: compiled, info } = this.#compileCustomCss();
+      const { state, bytes, fileName } = this.customCss;
+      this.customCss = { state, bytes, fileName, ...info };
+      if (this.settings.customCss !== false) {
+        program = compiled;
+      }
+    }
+    const key = program ? JSON.stringify(program) : "";
+    if (key === this._customCssKey) {
+      return false;
+    }
+    this._customCssKey = key;
+    try {
+      Services.ppmm.sharedData.set(CUSTOM_CSS_KEY, program);
+      Services.ppmm.sharedData.flush();
+    } catch (error) {
+      console.error("zen-app: cannot publish the custom CSS", error);
+    }
+    for (const appWindow of this.windows) {
+      for (const browser of appWindow.gBrowser?.browsers || []) {
+        for (const context of browser.browsingContext?.getAllBrowsingContextsInSubtree() || []) {
+          try {
+            context.currentWindowGlobal?.getActor("ZenAppCss").sendAsyncMessage("ZenAppCss:update", program);
+          } catch {
+            // no page actor here (chrome page, about:blank, closing)
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  /* ------------------------------------------- custom CSS: @imports */
+
+  get #importCacheDir() {
+    return PathUtils.join(ConfigStore.directory, "css-imports");
+  }
+
+  /** Download the @imports the custom CSS needs, then re-publish. */
+  #refreshCssImports() {
+    this.#loadCssImports({ network: true })
+      .then(async changed => {
+        if (changed && this.#publishCustomCss()) {
+          this.#emit("customCss");
+          await this.#writeStatus();
+        }
+      })
+      .catch(error => console.error("zen-app: custom CSS imports", error));
+  }
+
+  /**
+   * Fill this._cssImports for the current custom CSS (nested imports too):
+   * from the cache, and with `network` also downloading missing or old ones.
+   */
+  async #loadCssImports({ network }) {
+    if (this._customCssText === null) {
+      return false;
+    }
+    let changed = false;
+    for (let round = 0; round <= MAX_IMPORT_DEPTH; round++) {
+      const { info } = this.#compileCustomCss();
+      const wanted = info.imports.pending.concat(network ? info.imports.inlined : []);
+      const todo = wanted.filter(url => !(network ? this._cssImportsChecked.has(url) : url in this._cssImports));
+      if (!todo.length) {
+        break;
+      }
+      await Promise.all(
+        todo.map(async url => {
+          const text = await this.#importText(url, { network });
+          if (network) {
+            this._cssImportsChecked.add(url);
+          }
+          if (text !== null && text !== this._cssImports[url]) {
+            this._cssImports[url] = text;
+            changed = true;
+          }
+        })
+      );
+    }
+    return changed;
+  }
+
+  /** Text of an https @import: cached copy, refreshed daily. "" = unavailable. */
+  async #importText(url, { network }) {
+    const path = PathUtils.join(this.#importCacheDir, sha256Hex(url) + ".css");
+    let cached = null;
+    let age = Infinity;
+    try {
+      const stat = await IOUtils.stat(path);
+      cached = await IOUtils.readUTF8(path);
+      age = Date.now() - stat.lastModified;
+    } catch {
+      // not downloaded yet
+    }
+    if (!network || (cached !== null && age < IMPORT_MAX_AGE_MS)) {
+      return cached;
+    }
+    try {
+      // AbortSignal.timeout() needs a window; system modules have none.
+      const controller = new AbortController();
+      const timer = lazy.setTimeout(() => controller.abort(), 20000);
+      let text;
+      try {
+        const response = await fetch(url, { credentials: "omit", redirect: "follow", signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        text = await response.text();
+      } finally {
+        lazy.clearTimeout(timer);
+      }
+      if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) {
+        throw new Error("too large");
+      }
+      await IOUtils.makeDirectory(this.#importCacheDir, { ignoreExisting: true });
+      await IOUtils.writeUTF8(path, text, { tmpPath: path + ".tmp" });
+      return text;
+    } catch (error) {
+      console.warn(`zen-app: cannot download ${url}`, error);
+      return cached ?? "";
+    }
+  }
+
+  /* --------------------------------------- wallpaper colour changes */
+
+  /** Poll the wallpaper scheme files; a new wallpaper re-colours the app. */
+  #watchScheme() {
+    const paths = this.store.config.schemePaths || [];
+    if (!paths.length || this._schemeTimer) {
+      return;
+    }
+    let busy = false;
+    const check = async () => {
+      if (busy) {
+        return;
+      }
+      busy = true;
+      try {
+        const parts = await Promise.all(
+          paths.map(path =>
+            IOUtils.stat(path).then(
+              stat => `${stat.lastModified}:${stat.size}`,
+              () => "-"
+            )
+          )
+        );
+        const stamp = parts.join("|");
+        if (this._schemeStamp !== null && stamp !== this._schemeStamp && this.settings.palette === "system") {
+          this._schemeStamp = stamp;
+          await this.refreshPalette();
+        }
+        this._schemeStamp = stamp;
+      } catch (error) {
+        console.error("zen-app: wallpaper scheme", error);
+      } finally {
+        busy = false;
+      }
+    };
+    check();
+    this._schemeTimer = lazy.setInterval(check, SCHEME_POLL_MS);
   }
 
   /** The app window came to the front: pick up edits made in an editor. */
@@ -985,6 +1228,8 @@ class ZenAppRuntime {
                 rules: this.customCss.rules,
                 warnings: this.customCss.warnings,
                 aliases: this.customCss.aliases,
+                paletteColors: this.customCss.palette?.applied || 0,
+                imports: this.customCss.imports,
               }
             : {}),
         },

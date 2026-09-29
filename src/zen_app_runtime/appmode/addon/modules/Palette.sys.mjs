@@ -144,18 +144,26 @@ async function readScheme(paths) {
       if (!colours || typeof colours.primary !== "string") {
         continue;
       }
+      // Every colour of the scheme (Caelestia also writes background,
+      // success, terminal colours, ...), for themes that use more than the
+      // M3 roles below.
+      const all = {};
+      for (const [name, value] of Object.entries(colours)) {
+        if (/^[A-Za-z][\w-]{0,40}$/.test(name) && typeof value === "string" && /^#?[0-9a-fA-F]{6}$/.test(value)) {
+          all[name] = value.startsWith("#") ? value.toLowerCase() : "#" + value.toLowerCase();
+        }
+      }
       const roles = {};
       for (const name of ROLE_NAMES) {
-        const value = colours[name];
-        if (typeof value === "string" && /^#?[0-9a-fA-F]{6}$/.test(value)) {
-          roles[name] = value.startsWith("#") ? value.toLowerCase() : "#" + value.toLowerCase();
+        if (all[name]) {
+          roles[name] = all[name];
         }
       }
       if (!roles.surface || !roles.onSurface) {
         continue;
       }
       const mode = typeof data.mode === "string" ? data.mode : null;
-      return { roles, dark: mode ? mode === "dark" : true, path };
+      return { roles, all, dark: mode ? mode === "dark" : true, path };
     } catch {
       // missing or unreadable scheme; try the next candidate
     }
@@ -177,13 +185,39 @@ export async function resolvePalette(settings, accent, schemePaths, systemDark) 
     const scheme = await readScheme(schemePaths);
     if (scheme && scheme.dark === wantDark) {
       const derived = derivePalette(scheme.roles.primary || accent, wantDark);
-      return { dark: wantDark, source: "system", seed: scheme.roles.primary, roles: { ...derived.roles, ...scheme.roles } };
+      return {
+        dark: wantDark,
+        source: "system",
+        seed: scheme.roles.primary,
+        roles: { ...derived.roles, ...scheme.roles },
+        scheme: scheme.all,
+      };
     }
     if (scheme?.roles.primary) {
       return { ...derivePalette(scheme.roles.primary, wantDark), source: "system-seed" };
     }
   }
   return derivePalette(accent, wantDark);
+}
+
+/**
+ * Colours for a Caelestia colour block (--primary, --onSurface, ...): the
+ * whole wallpaper scheme when the palette comes from it, else the M3 roles
+ * plus the few non-M3 names such themes also use.
+ */
+export function paletteColors(palette) {
+  if (!palette?.roles) {
+    return null;
+  }
+  const roles = palette.roles;
+  const colors = { ...(palette.source === "system" ? palette.scheme || {} : {}), ...roles };
+  colors.background ??= roles.surface;
+  colors.onBackground ??= roles.onSurface;
+  colors.surfaceVariant ??= roles.surfaceContainerHighest;
+  colors.surfaceTint ??= roles.primary;
+  colors.shadow ??= "#000000";
+  colors.scrim ??= "#000000";
+  return colors;
 }
 
 /** CSS custom properties (kebab-case --zenapp-* names) for a palette. */
