@@ -70,6 +70,16 @@
   #main-window {
     background: color-mix(in srgb, var(--zenapp-tint-color) calc(var(--zenapp-tint) * 1%), transparent) !important;
   }
+  /* Zen lays a 10% white film over transparent web views in dark mode
+     (--zen-transparent-browser-background); it lifts the blacks and would
+     make the app lighter than the terminal next to it. The glass above is
+     the only background. */
+  .browserSidebarContainer {
+    --zen-transparent-browser-background: transparent !important;
+  }
+  #tabbrowser-tabpanels browser[type="content"] {
+    background: transparent !important;
+  }
   #zen-main-app-wrapper,
   #browser,
   #zen-appcontent-wrapper,
@@ -195,6 +205,16 @@
   box-shadow: 0 18px 56px rgba(0, 0, 0, 0.45) !important;
   overflow: hidden !important;
   padding: 0 !important;
+}
+
+/* Translucent apps: the dialog is dark glass over the (blurred) app; dense
+   enough to stay legible over any page even without the backdrop blur. */
+:root[zenapp-appearance="transparent"] .dialogBox[zenapp-dialog] {
+  background: color-mix(in srgb, var(--zenapp-surface-container-lowest) 92%, transparent) !important;
+  backdrop-filter: blur(28px) saturate(1.15) !important;
+  box-shadow:
+    0 18px 56px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px color-mix(in srgb, var(--zenapp-on-surface) 9%, transparent) !important;
 }
 
 .dialogBox[zenapp-dialog] .dialogTitleBar {

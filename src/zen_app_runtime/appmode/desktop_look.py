@@ -236,17 +236,28 @@ def inherited_render_prefs(profile: Path | None = None) -> tuple[dict[str, Any],
 
 
 def zen_glass(profile: Path | None = None) -> dict[str, Any] | None:
+    """The background the main Zen window really paints.
+
+    Transparent Zen's colour applies only while its "custom background
+    colour" switch is on. Otherwise Zen's own translucent background is used:
+    ZenGradientGenerator paints rgba(0, 0, 0, 0.4) for a dark space without
+    theme colours and nothing for a light one (themed spaces blend their
+    colours on top).
+    """
     profile = profile or main_zen_profile()
     if not profile:
         return None
     prefs = read_prefs(profile)
     if not prefs.get("zen.widget.linux.transparency", False):
         return _glass("#000000", 1.0, "Zen", profile, note="Zen transparency is off")
-    value = prefs.get("mod.sameerasw.zen_transparency_color")
-    parsed = _parse_css_color(value) if isinstance(value, str) else None
-    if parsed:
-        return _glass(parsed[0], parsed[1], "Zen", profile, mod="Transparent Zen")
-    return _glass("#000000", 0.0, "Zen", profile)
+    if prefs.get("mod.sameerasw.zen_bg_color_enabled", False):
+        value = prefs.get("mod.sameerasw.zen_transparency_color")
+        parsed = _parse_css_color(value) if isinstance(value, str) else None
+        if parsed:
+            return _glass(parsed[0], parsed[1], "Zen", profile, mod="Transparent Zen")
+    if prefs.get("zen.view.window.scheme", 2) == 1:
+        return _glass("#000000", 0.0, "Zen", profile, note="Zen default, light")
+    return _glass("#000000", 0.4, "Zen", profile, note="Zen default")
 
 
 def glass_sources() -> dict[str, dict[str, Any]]:

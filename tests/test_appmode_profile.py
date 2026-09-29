@@ -74,6 +74,10 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn("--zenapp-tint: 40;", chrome)
         self.assertIn("--zenapp-tint-color: #000000;", chrome)
         self.assertIn("#navigator-toolbox", chrome)
+        # Zen's 10% white film over transparent web views must not come back:
+        # the window glass is the only background (same contrast as Ghostty).
+        self.assertIn("--zen-transparent-browser-background: transparent !important;", chrome)
+        self.assertIn('#tabbrowser-tabpanels browser[type="content"] {\n    background: transparent !important;', chrome)
         config = json.loads((profile / "zen-app" / "app.json").read_text())
         self.assertEqual("zen-app-discord", config["desktopId"])
         self.assertEqual("ghostty", config["glass"]["resolved"])

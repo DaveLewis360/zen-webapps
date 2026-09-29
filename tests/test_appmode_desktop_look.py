@@ -55,18 +55,35 @@ class DesktopLookTests(unittest.TestCase):
         self.write(
             ".zen/abc.Default/prefs.js",
             'user_pref("zen.widget.linux.transparency", true);\n'
-            'user_pref("mod.sameerasw.zen_transparency_color", "#00000066");\n'
+            'user_pref("mod.sameerasw.zen_bg_color_enabled", true);\n'
+            'user_pref("mod.sameerasw.zen_transparency_color", "#00000080");\n'
             'user_pref("widget.dmabuf.force-enabled", true);\n'
             'user_pref("media.ffmpeg.vaapi.enabled", true);\n'
             'user_pref("gfx.blacklist.canvas2d", "x");\n'
             'user_pref("browser.startup.page", 3);\n',
         )
         glass = desktop_look.zen_glass()
-        self.assertEqual("#000000", glass["color"])
-        self.assertAlmostEqual(0.4, glass["alpha"], places=2)
+        self.assertEqual(("#000000", "Transparent Zen"), (glass["color"], glass.get("mod")))
+        self.assertAlmostEqual(0.502, glass["alpha"], places=2)
         prefs, profile = desktop_look.inherited_render_prefs()
         self.assertEqual(self.home / ".zen/abc.Default", profile)
         self.assertEqual({"media.ffmpeg.vaapi.enabled": True, "widget.dmabuf.force-enabled": True}, prefs)
+
+    def test_zen_mod_colour_is_ignored_while_its_switch_is_off(self):
+        self.write(".zen/installs.ini", "[ABC]\nDefault=abc.Default\n")
+        prefs = self.write(
+            ".zen/abc.Default/prefs.js",
+            'user_pref("zen.widget.linux.transparency", true);\n'
+            'user_pref("mod.sameerasw.zen_bg_color_enabled", false);\n'
+            'user_pref("mod.sameerasw.zen_transparency_color", "#00000000");\n'
+            'user_pref("zen.view.window.scheme", 0);\n',
+        )
+        glass = desktop_look.zen_glass()
+        self.assertEqual(("#000000", 0.4, "Zen default"), (glass["color"], glass["alpha"], glass["note"]))
+        prefs.write_text(prefs.read_text() + 'user_pref("zen.view.window.scheme", 1);\n')
+        self.assertEqual(0.0, desktop_look.zen_glass()["alpha"])
+        prefs.write_text('user_pref("zen.widget.linux.transparency", false);\n')
+        self.assertEqual(1.0, desktop_look.zen_glass()["alpha"])
 
     def test_resolve_glass(self):
         sources = {"vesktop": {"color": "#000000", "alpha": 0.3}}
