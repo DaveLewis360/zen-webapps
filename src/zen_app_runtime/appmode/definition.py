@@ -60,6 +60,8 @@ class AppSettings:
     developer: bool = False
     zen_internet: bool = True
     disabled_features: tuple[str, ...] = ()
+    # The user's own CSS (<library>/<id>.css) applies while this is on.
+    custom_css: bool = True
 
 
 _SETTINGS_FIELDS = {
@@ -77,6 +79,7 @@ _SETTINGS_FIELDS = {
     "developer": "developer",
     "zenInternet": "zen_internet",
     "disabledFeatures": "disabled_features",
+    "customCss": "custom_css",
 }
 
 

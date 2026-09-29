@@ -50,10 +50,18 @@ class AppModeDefinitionTests(unittest.TestCase):
             {"unknown": 1},
             {"disabledFeatures": ["no-separator"]},
             {"disabledFeatures": "discord.css|x"},
+            {"customCss": "yes"},
         ):
             with self.subTest(settings=bad):
                 with self.assertRaises(AppModeError):
                     settings_from_dict(bad)
+
+    def test_custom_css_is_on_by_default_and_round_trips(self):
+        self.assertTrue(settings_from_dict({}).custom_css)
+        definition = with_settings(definition_from_preset(PRESETS["messenger"]), custom_css=False)
+        data = definition_to_dict(definition)
+        self.assertFalse(data["settings"]["customCss"])
+        self.assertFalse(definition_from_dict(data).settings.custom_css)
 
     def test_settings_round_trip_including_features(self):
         settings = settings_from_dict(

@@ -87,6 +87,8 @@ export class AppWindow {
       this.appTab = this.gBrowser.selectedTab;
       this.#installRouting();
     }
+    // Returning to the app (e.g. from an editor) picks up CSS edits.
+    this.#on(this.win, "activate", () => this.app.windowActivated().catch(console.error));
     this.#on(this.win, "unload", () => this.teardown(), { once: true });
   }
 

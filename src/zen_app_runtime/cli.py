@@ -251,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass"}
+APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass", "css"}
 
 
 def _add_app_mode_commands(commands) -> None:
@@ -296,6 +296,17 @@ def _add_app_mode_commands(commands) -> None:
 
     commands.add_parser("glass", help="app mode: show desktop glass sources (Ghostty, Vesktop, Zen)")
 
+    css = commands.add_parser(
+        "css",
+        help="app mode: an app's own CSS: show it, set it from a file, --on/--off, --remove",
+    )
+    css.add_argument("app_id")
+    css.add_argument("css_file", nargs="?", metavar="FILE", help="CSS file to use (plain CSS or a Stylus userstyle)")
+    css_state = css.add_mutually_exclusive_group()
+    css_state.add_argument("--on", dest="css_state", action="store_const", const="on", help="apply it")
+    css_state.add_argument("--off", dest="css_state", action="store_const", const="off", help="keep it but do not apply it")
+    css_state.add_argument("--remove", dest="css_state", action="store_const", const="remove", help="delete it")
+
 
 def _run_app_mode(arguments: argparse.Namespace) -> int:
     from .appmode import commands as app_mode
@@ -329,6 +340,8 @@ def _run_app_mode(arguments: argparse.Namespace) -> int:
         return app_mode.cmd_styles(arguments.styles_action, arguments.target)
     if command == "glass":
         return app_mode.cmd_glass()
+    if command == "css":
+        return app_mode.cmd_css(arguments.app_id, arguments.css_file, arguments.css_state)
     raise AssertionError(command)  # pragma: no cover
 
 

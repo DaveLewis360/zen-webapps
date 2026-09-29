@@ -13,7 +13,7 @@ export const SETTINGS_ENUMS = {
   colorScheme: ["system", "dark", "light"],
   windowChrome: ["auto", "none", "titlebar"],
 };
-export const BOOLEAN_SETTINGS = ["notifications", "media", "autoplay", "drm", "findInPage", "developer", "zenInternet"];
+export const BOOLEAN_SETTINGS = ["notifications", "media", "autoplay", "drm", "findInPage", "developer", "zenInternet", "customCss"];
 const FEATURE_KEY = /^[^|\u0000-\u001f\u007f]{1,120}\|[^\u0000-\u001f\u007f]{1,120}$/;
 export const TINT_RANGE = [0, 90];
 export const ONBOARDING_VERSION = 1;

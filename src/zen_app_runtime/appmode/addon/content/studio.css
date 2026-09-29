@@ -689,18 +689,18 @@ p {
   border-top: 1px solid color-mix(in srgb, var(--zenapp-outline-variant) 55%, transparent);
 }
 
-.row .text {
+.row > .text {
   flex: 1;
   min-width: 0;
   display: grid;
   gap: 2px;
 }
 
-.row .text .title {
+.row > .text .title {
   font-size: 16px;
 }
 
-.row .text .body {
+.row > .text .body {
   font-size: 14px;
   line-height: 20px;
 }
@@ -708,6 +708,72 @@ p {
 .row.column {
   flex-direction: column;
   align-items: stretch;
+}
+
+/* Custom CSS row. */
+.custom-css .body.bad {
+  color: var(--zenapp-error);
+}
+
+.css-warnings:empty {
+  display: none;
+}
+
+.css-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zenapp-tertiary);
+}
+
+.css-warning .icon {
+  font-size: 18px;
+}
+
+.css-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.css-actions .btn {
+  height: 36px;
+  padding: 0 16px 0 12px;
+  font-size: 13px;
+}
+
+.css-actions .btn .icon {
+  font-size: 18px;
+}
+
+.css-actions .btn[hidden] {
+  display: none;
+}
+
+.btn.danger-text {
+  color: var(--zenapp-error);
+}
+
+.css-path {
+  margin-top: 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--zenapp-on-surface-variant);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.css-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--zenapp-on-surface-variant);
+  opacity: 0.8;
 }
 
 .row.with-control {

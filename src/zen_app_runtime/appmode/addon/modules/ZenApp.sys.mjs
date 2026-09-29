@@ -11,6 +11,13 @@ import { paletteToCSSVariables, resolvePalette } from "resource://zenapp/modules
 import { Scope, openExternally } from "resource://zenapp/modules/Routing.sys.mjs";
 import { getLocale, setLocale, t } from "resource://zenapp/modules/Strings.sys.mjs";
 import { StyleCatalog, dataSheetURI, featureKey } from "resource://zenapp/modules/Styles.sys.mjs";
+import {
+  MAX_CUSTOM_CSS_BYTES,
+  compileUserCss,
+  importHeader,
+  importedFrom,
+  stripImportHeader,
+} from "resource://zenapp/modules/UserCss.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -28,6 +35,14 @@ const COMMAND_LINE_CONTRACT = "@zen-app-runtime/app-mode-command-line;1";
 const COMMAND_LINE_CID = Components.ID("{6f1a4b52-86a3-4f6e-9a39-2d3a1d7c5e41}");
 const COMMAND_LINE_CATEGORY_ENTRY = "a-zen-app-runtime";
 
+/** A custom CSS the app refuses; `code` picks the message (css.error.<code>). */
+export class CustomCssError extends Error {
+  constructor(code) {
+    super(`custom CSS: ${code}`);
+    this.code = code;
+  }
+}
+
 class ZenAppRuntime {
   started = false;
   store = null;
@@ -41,6 +56,10 @@ class ZenAppRuntime {
   _listeners = new Set();
   _sheets = [];
   styles = null;
+  customCss = { state: "none" };
+  _customCssText = null;
+  _customCssStamp = null;
+  _customCssLoading = null;
   _observers = [];
   _pendingAction = null;
   _widevinePromise = null;
@@ -72,6 +91,7 @@ class ZenAppRuntime {
     this.#applyPermissions();
     const catalog = this.store.config.zenInternet || {};
     this.styles = catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
+    await this.#reloadCustomCss();
     this.#registerStyles();
     this.#registerCommandLine();
     await this.refreshPalette();
@@ -360,6 +380,7 @@ class ZenAppRuntime {
     if (
       before.appearance !== settings.appearance ||
       before.zenInternet !== settings.zenInternet ||
+      before.customCss !== settings.customCss ||
       JSON.stringify(before.disabledFeatures || []) !== JSON.stringify(settings.disabledFeatures || [])
     ) {
       this.#registerStyles();
@@ -449,6 +470,7 @@ class ZenAppRuntime {
         translucent,
         disabled: this.settings.disabledFeatures,
         exactOnly: new Set(this.scope.authHosts || []),
+        aliases: this.store.config.styleAliases || {},
       })) {
         register(dataSheetURI(sheet.css));
       }
@@ -458,6 +480,13 @@ class ZenAppRuntime {
       const extra = extras[id];
       if (extra && (extra.when === "always" || (extra.when === "glass" && translucent))) {
         register(Services.io.newURI(`resource://zenapp/themes/${extra.file}`));
+      }
+    }
+    // Last, so the user's own rules win over the catalog and the extras.
+    if (this.settings.customCss !== false && this._customCssText !== null) {
+      const { css } = compileUserCss(this._customCssText, this.#customCssScope());
+      if (css) {
+        register(dataSheetURI(css));
       }
     }
   }
@@ -498,6 +527,194 @@ class ZenAppRuntime {
       off.add(key);
     }
     return this.updateSettings({ disabledFeatures: [...off] });
+  }
+
+  /* ----------------------------------------------------- custom CSS */
+
+  get customCssPath() {
+    return this.store.config.customCss?.path || null;
+  }
+
+  #customCssScope() {
+    return {
+      hosts: this.styledHosts,
+      aliases: this.store.config.styleAliases || {},
+      startUrl: this.definition.startUrl || "",
+    };
+  }
+
+  /** Re-read <library>/<id>.css if it changed on disk; true when it did. */
+  #reloadCustomCss() {
+    this._customCssLoading ??= this.#loadCustomCss().finally(() => {
+      this._customCssLoading = null;
+    });
+    return this._customCssLoading;
+  }
+
+  async #loadCustomCss() {
+    const path = this.customCssPath;
+    if (!path) {
+      this.customCss = { state: "unsupported" };
+      return false;
+    }
+    let stat;
+    try {
+      stat = await IOUtils.stat(path);
+    } catch {
+      const had = this._customCssText !== null || this.customCss.state !== "none";
+      this._customCssText = null;
+      this._customCssStamp = null;
+      this.customCss = { state: "none" };
+      return had;
+    }
+    const stamp = `${stat.lastModified}:${stat.size}`;
+    if (stamp === this._customCssStamp) {
+      return false;
+    }
+    this._customCssStamp = stamp;
+    this._customCssText = null;
+    if (stat.size > MAX_CUSTOM_CSS_BYTES) {
+      this.customCss = { state: "error", error: "tooLarge", bytes: stat.size };
+      return true;
+    }
+    try {
+      const text = await IOUtils.readUTF8(path);
+      const { info } = compileUserCss(text, this.#customCssScope());
+      this._customCssText = text;
+      this.customCss = { state: "loaded", bytes: stat.size, fileName: importedFrom(text), ...info };
+    } catch (error) {
+      console.error("zen-app: cannot read the custom CSS", error);
+      this.customCss = { state: "error", error: "unreadable", bytes: stat.size };
+    }
+    return true;
+  }
+
+  async #customCssChanged() {
+    this.#registerStyles();
+    this.#emit("customCss");
+    await this.#writeStatus();
+  }
+
+  /** The app window came to the front: pick up edits made in an editor. */
+  async windowActivated() {
+    if (this.store && (await this.#reloadCustomCss())) {
+      await this.#customCssChanged();
+    }
+  }
+
+  /** Save CSS text (a file's content or pasted text) as this app's CSS. */
+  async importCustomCss(text, { fileName = null } = {}) {
+    const path = this.customCssPath;
+    if (!path) {
+      throw new CustomCssError("unknown");
+    }
+    const body = stripImportHeader(String(text ?? "").replace(/^\uFEFF/, ""));
+    if (!body.trim()) {
+      throw new CustomCssError("empty");
+    }
+    if (body.includes("\u0000")) {
+      throw new CustomCssError("binary");
+    }
+    const data = importHeader(fileName) + body;
+    if (new TextEncoder().encode(data).length > MAX_CUSTOM_CSS_BYTES) {
+      throw new CustomCssError("tooLarge");
+    }
+    await this._customCssLoading;
+    await IOUtils.writeUTF8(path, data, { tmpPath: path + ".tmp", flush: true });
+    await IOUtils.setPermissions(path, 0o600);
+    this._customCssStamp = null; // same size within the same millisecond is still new
+    if (this.settings.customCss === false) {
+      await this.store.updateSettings({ customCss: true });
+    }
+    await this.#reloadCustomCss();
+    await this.#customCssChanged();
+    return this.customCss;
+  }
+
+  /** Native file picker; null when cancelled. */
+  async pickCustomCss() {
+    const win = this.mainWindow?.win || Services.wm.getMostRecentWindow("navigator:browser");
+    const picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
+    picker.init(win.browsingContext, t("css.picker.title"), Ci.nsIFilePicker.modeOpen);
+    picker.appendFilter(t("css.picker.filter"), "*.css");
+    picker.appendFilters(Ci.nsIFilePicker.filterAll);
+    const result = await new Promise(resolve => picker.open(resolve));
+    if (result !== Ci.nsIFilePicker.returnOK || !picker.file) {
+      return null;
+    }
+    const file = picker.file;
+    if (file.fileSize > MAX_CUSTOM_CSS_BYTES) {
+      throw new CustomCssError("tooLarge");
+    }
+    let text;
+    try {
+      text = await IOUtils.readUTF8(file.path);
+    } catch {
+      throw new CustomCssError("binary");
+    }
+    return this.importCustomCss(text, { fileName: file.leafName });
+  }
+
+  #clipboardText() {
+    const transferable = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+    transferable.init(null);
+    transferable.addDataFlavor("text/plain");
+    const context = this.mainWindow?.win?.browsingContext?.currentWindowContext || null;
+    Services.clipboard.getData(transferable, Services.clipboard.kGlobalClipboard, context);
+    const data = {};
+    try {
+      transferable.getTransferData("text/plain", data);
+    } catch {
+      return "";
+    }
+    return data.value?.QueryInterface(Ci.nsISupportsString).data || "";
+  }
+
+  async pasteCustomCss() {
+    const text = this.#clipboardText();
+    if (!text.trim()) {
+      throw new CustomCssError("emptyClipboard");
+    }
+    return this.importCustomCss(text);
+  }
+
+  /** Delete the app's CSS; returns what is needed to undo it. */
+  async removeCustomCss() {
+    const path = this.customCssPath;
+    if (!path) {
+      return null;
+    }
+    await this._customCssLoading;
+    let previous = null;
+    try {
+      const text = await IOUtils.readUTF8(path);
+      previous = { text: stripImportHeader(text), fileName: importedFrom(text) };
+    } catch {
+      // unreadable or already gone: nothing to restore
+    }
+    await IOUtils.remove(path, { ignoreAbsent: true });
+    await this.#reloadCustomCss();
+    await this.#customCssChanged();
+    return previous;
+  }
+
+  setCustomCssEnabled(enabled) {
+    return this.updateSettings({ customCss: !!enabled });
+  }
+
+  /** Open the CSS file with the desktop's default application. */
+  openCustomCss() {
+    const path = this.customCssPath;
+    if (!path) {
+      return;
+    }
+    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    file.initWithPath(path);
+    try {
+      file.launch();
+    } catch {
+      file.reveal();
+    }
   }
 
   /* ---------------------------------------------------------- glass */
@@ -652,6 +869,7 @@ class ZenAppRuntime {
       glass: { choice: this.glassChoice, sources: this.glassSources, tint: this.tint },
       styleSites: this.styleSites(),
       stylesCatalog: { origin: this.store.config.zenInternet?.origin, sites: this.store.config.zenInternet?.sites },
+      customCss: { ...this.customCss, enabled: this.settings.customCss !== false, path: this.customCssPath },
       widevine: { ...this.widevine },
       needsOnboarding: this.store.needsOnboarding,
       versions: {
@@ -720,6 +938,20 @@ class ZenAppRuntime {
         startedAt: new Date().toISOString(),
         onboardingCompleted: !this.store.needsOnboarding,
         widevine: this.widevine.state,
+        customCss: {
+          state: this.customCss.state,
+          enabled: this.settings.customCss !== false,
+          ...(this.customCss.state === "loaded"
+            ? {
+                bytes: this.customCss.bytes,
+                sections: this.customCss.sections,
+                matching: this.customCss.matching,
+                rules: this.customCss.rules,
+                warnings: this.customCss.warnings,
+                aliases: this.customCss.aliases,
+              }
+            : {}),
+        },
       });
     } catch (error) {
       console.error("zen-app: status", error);

@@ -78,3 +78,7 @@ class AppModePaths:
 
     def shim_path(self) -> Path:
         return self.bin / "zen-app"
+
+    def custom_css_path(self, app_id: str) -> Path:
+        """The user's own CSS for an app, next to its definition."""
+        return self.library / f"{app_id}.css"

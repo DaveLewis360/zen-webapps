@@ -37,6 +37,9 @@ class Preset:
     autoplay: bool = True
     drm: bool = False
     tagline: dict[str, str] = field(default_factory=dict)
+    # Sites that moved: styles written for the old domain (Zen Internet
+    # entries, uploaded userstyles) also apply under these URL prefixes.
+    style_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 PRESETS: dict[str, Preset] = {
@@ -122,6 +125,14 @@ PRESETS: dict[str, Preset] = {
             tagline={
                 "hu": "A Messenger a Facebook webes üzenetküldőjén keresztül.",
                 "en": "Messenger through Facebook's web messaging.",
+            },
+            # messenger.com closed in April 2026 and redirects here.
+            style_aliases={
+                "messenger.com": (
+                    "https://www.facebook.com/messages",
+                    "https://web.facebook.com/messages",
+                    "https://facebook.com/messages",
+                ),
             },
         ),
         Preset(

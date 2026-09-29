@@ -30,6 +30,8 @@ from .zen_internet import catalog_meta
 ADDON_ID = "zenapp@zen-app-runtime"
 ADDON_DIR = Path(__file__).resolve().parent / "addon"
 USER_CHROME_TEMPLATE = Path(__file__).resolve().parent / "profile" / "userChrome.css"
+# Keep in sync with MAX_CUSTOM_CSS_BYTES in addon/modules/UserCss.sys.mjs.
+MAX_CUSTOM_CSS_BYTES = 512 * 1024
 SETTINGS_BLOCK_BEGIN = "// >>> zen-app settings (managed; rewritten by the app)"
 SETTINGS_BLOCK_END = "// <<< zen-app settings"
 
@@ -359,6 +361,8 @@ def render_app_config(
         "settingsPrefs": SETTINGS_PREFS,
         "extras": {key: dict(value) for key, value in EXTRAS.items()},
         "zenInternet": catalog_meta(paths),
+        "customCss": {"path": str(paths.custom_css_path(definition.id)), "maxBytes": MAX_CUSTOM_CSS_BYTES},
+        "styleAliases": {key: list(value) for key, value in (preset.style_aliases if preset else {}).items()},
         "glass": {"sources": sources or {}, "resolved": resolve_glass(definition.settings.glass, sources or {})},
         "inheritedPrefs": {"from": str(inherited_from) if inherited_from else None, "prefs": inherited or {}},
         "schemePaths": scheme_paths(),

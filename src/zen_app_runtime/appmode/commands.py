@@ -6,12 +6,13 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import sys
 from typing import TextIO
 
-from .definition import AppDefinition, definition_from_preset, definition_from_url
+from .definition import AppDefinition, definition_from_preset, definition_from_url, with_settings
 from .desktop_entry import install_desktop_entry, remove_desktop_entry
 from .errors import AppModeError
 from .icons import IconChoice, resolve_icon
@@ -19,7 +20,7 @@ from .launcher import LaunchOutcome, launch, running_pid
 from .library import Library, write_private_file
 from .paths import AppModePaths, desktop_id
 from .presets import PRESETS, get_preset
-from .render import RenderResult, render_profile
+from .render import MAX_CUSTOM_CSS_BYTES, RenderResult, render_profile
 from .desktop_look import glass_sources, inherited_render_prefs, resolve_glass
 from .zen import ZenRuntime, find_zen
 from . import zen_internet
@@ -270,11 +271,112 @@ def cmd_rm(app_id: str, *, purge: bool, yes: bool, out: TextIO | None = None, pa
     remove_desktop_entry(paths, app_id)
     if purge:
         shutil.rmtree(paths.app_dir(app_id), ignore_errors=True)
+        paths.custom_css_path(app_id).unlink(missing_ok=True)
     out.write(
         f"Removed {app_id}" + (" and its profile" if purge else " (profile kept; use --purge to delete it)") + "\n"
         if removed or purge
         else f"{app_id} had no definition; launcher entry cleaned up\n"
     )
+    if not purge and paths.custom_css_path(app_id).is_file():
+        out.write(f"  custom CSS kept: {paths.custom_css_path(app_id)}\n")
+    return 0
+
+
+_IMPORT_HEADER = re.compile(r'^/\* zen-app: imported from "([^"\n]*)" \*/\r?\n?')
+
+
+def _import_header(file_name: str) -> str:
+    """Same marker as importHeader() in addon/modules/UserCss.sys.mjs."""
+    safe = re.sub(r'[\x00-\x1f\x7f"*/\\]', "_", file_name)[:120]
+    return f'/* zen-app: imported from "{safe}" */\n' if safe else ""
+
+
+def read_custom_css_source(source: Path) -> str:
+    """Text of a CSS file the user wants to use, validated like the app does."""
+    try:
+        size = source.stat().st_size
+    except OSError as error:
+        raise AppModeError(f"cannot read {source}: {error.strerror or error}") from error
+    if size > MAX_CUSTOM_CSS_BYTES:
+        raise AppModeError(f"{source} is too large ({size} bytes; at most {MAX_CUSTOM_CSS_BYTES})")
+    try:
+        text = source.read_bytes().decode("utf-8-sig")
+    except OSError as error:
+        raise AppModeError(f"cannot read {source}: {error.strerror or error}") from error
+    except UnicodeDecodeError as error:
+        raise AppModeError(f"{source} is not UTF-8 text") from error
+    if "\x00" in text:
+        raise AppModeError(f"{source} is not a text CSS file")
+    text = _IMPORT_HEADER.sub("", text, count=1)
+    if not text.strip():
+        raise AppModeError(f"{source} is empty")
+    return text
+
+
+def _running_supports_custom_css(paths: AppModePaths, app_id: str) -> bool:
+    """Whether the running app's add-on reports custom CSS (newer versions do)."""
+    try:
+        status = json.loads((paths.profile_dir(app_id) / "zen-app" / "status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(status, dict) and "customCss" in status
+
+
+def cmd_css(
+    app_id: str,
+    file: str | None,
+    state: str | None,
+    *,
+    out: TextIO | None = None,
+    paths: AppModePaths | None = None,
+) -> int:
+    """Show, set, switch or remove an app's own CSS (<library>/<id>.css)."""
+    out = out or sys.stdout
+    paths, library = _context(paths)
+    definition = library.load(app_id)
+    target = paths.custom_css_path(app_id)
+    running = running_pid(paths.profile_dir(app_id)) is not None
+    if file and state:
+        raise AppModeError("give either a CSS file or one of --on, --off, --remove")
+    if file:
+        source = Path(file).expanduser()
+        data = (_import_header(source.name) + read_custom_css_source(source)).encode("utf-8")
+        if len(data) > MAX_CUSTOM_CSS_BYTES:
+            raise AppModeError(f"{source} is too large (at most {MAX_CUSTOM_CSS_BYTES} bytes)")
+        write_private_file(target, data)
+        if not definition.settings.custom_css and not running:
+            library.save(with_settings(definition, custom_css=True))
+            definition = library.load(app_id)
+        out.write(f"{definition.name}: custom CSS set from {source} ({len(data)} bytes)\n  {target}\n")
+        if running:
+            if _running_supports_custom_css(paths, app_id):
+                out.write("  The running app applies it when you switch to its window.\n")
+            else:
+                out.write("  The running app is an older version: close and reopen it to apply the CSS.\n")
+            if not definition.settings.custom_css:
+                out.write("  It is switched off in the app: turn it on in Settings (Ctrl+,) → Styles.\n")
+        return 0
+    if state == "remove":
+        existed = target.is_file()
+        target.unlink(missing_ok=True)
+        out.write(f"{definition.name}: custom CSS removed\n" if existed else f"{definition.name}: no custom CSS to remove\n")
+        return 0
+    if state in ("on", "off"):
+        if running:
+            raise AppModeError(f"{app_id} is running; use the switch in its settings (Ctrl+,) or close it first")
+        library.save(with_settings(definition, custom_css=state == "on"))
+        out.write(f"{definition.name}: custom CSS switched {state}\n")
+        return 0
+    if target.is_file():
+        header = _IMPORT_HEADER.match(target.read_text(encoding="utf-8", errors="replace"))
+        origin = f', from "{header.group(1)}"' if header else ""
+        switch = "on" if definition.settings.custom_css else "off"
+        out.write(f"{definition.name}: custom CSS {switch} ({target.stat().st_size} bytes{origin})\n  {target}\n")
+    else:
+        out.write(
+            f"{definition.name}: no custom CSS\n"
+            f"  Add one with `zen-app css {app_id} FILE` or in the app: Settings (Ctrl+,) → Styles.\n"
+        )
     return 0
 
 
@@ -310,6 +412,16 @@ def cmd_styles(action: str, target: str | None, *, out: TextIO | None = None, pa
         out.write(f"{site}  →  {', '.join(site_hosts)}\n")
         for feature in catalog["website"][site]:
             out.write(f"    • {feature}\n")
+    if is_app:
+        preset = get_preset(definition.preset) if definition.preset else None
+        for source, targets in (preset.style_aliases if preset else {}).items():
+            out.write(f"Styles for {source} also apply at: {', '.join(targets)}\n")
+        custom = paths.custom_css_path(target)
+        if custom.is_file():
+            switch = "on" if definition.settings.custom_css else "off"
+            out.write(f"Custom CSS ({switch}): {custom}\n")
+        else:
+            out.write("Custom CSS: none\n")
     return 0
 
 

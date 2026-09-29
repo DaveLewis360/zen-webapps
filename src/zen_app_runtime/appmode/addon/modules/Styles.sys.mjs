@@ -117,7 +117,7 @@ export class StyleCatalog {
   }
 
   /** One CSS sheet per matched site, honouring disabled features. */
-  sheets(hosts, { translucent, disabled, exactOnly }) {
+  sheets(hosts, { translucent, disabled, exactOnly, aliases = {} }) {
     const off = new Set(disabled || []);
     const sheets = [];
     for (const { site, hosts: siteHosts } of this.match(hosts, exactOnly)) {
@@ -135,8 +135,14 @@ export class StyleCatalog {
       if (!parts.length) {
         continue;
       }
-      const scope = siteHosts.map(host => `domain(${cssString(host)})`).join(", ");
-      sheets.push({ site, css: `/* Zen Internet: ${site} */\n@-moz-document ${scope} {\n${parts.join("\n")}\n}\n` });
+      const conditions = siteHosts.map(host => `domain(${cssString(host)})`);
+      // A site that moved (messenger.com → facebook.com/messages) keeps its style.
+      for (const [source, targets] of Object.entries(aliases || {})) {
+        if (siteHosts.some(host => normalize(host) === source || normalize(host).endsWith("." + source))) {
+          conditions.push(...targets.map(target => `url-prefix(${cssString(target)})`));
+        }
+      }
+      sheets.push({ site, css: `/* Zen Internet: ${site} */\n@-moz-document ${[...new Set(conditions)].join(", ")} {\n${parts.join("\n")}\n}\n` });
     }
     return sheets;
   }

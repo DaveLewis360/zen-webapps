@@ -83,6 +83,10 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertEqual("ghostty", config["glass"]["resolved"])
         self.assertEqual("bundled", config["zenInternet"]["origin"])
         self.assertTrue(Path(config["zenInternet"]["path"]).is_file())
+        self.assertEqual(str(self.paths.library / "discord.css"), config["customCss"]["path"])
+        self.assertEqual(render.MAX_CUSTOM_CSS_BYTES, config["customCss"]["maxBytes"])
+        self.assertEqual({}, config["styleAliases"])
+        self.assertTrue(config["definition"]["settings"]["customCss"])
         with zipfile.ZipFile(profile / "extensions" / f"{render.ADDON_ID}.xpi") as archive:
             names = set(archive.namelist())
             manifest = json.loads(archive.read("manifest.json"))
@@ -91,6 +95,15 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn("content/studio.html", names)
         self.assertEqual(prepared.render.addon_version, manifest["version"])
         self.assertNotIn("@VERSION@", json.dumps(manifest))
+        self.assertIn("modules/UserCss.sys.mjs", names)
+
+    def test_messenger_config_carries_its_style_aliases(self):
+        _, prepared = self.prepare("messenger")
+        config = json.loads((prepared.render.profile / "zen-app" / "app.json").read_text())
+        self.assertEqual(
+            {"messenger.com": ["https://www.facebook.com/messages", "https://web.facebook.com/messages", "https://facebook.com/messages"]},
+            config["styleAliases"],
+        )
 
     def test_rendering_is_idempotent_and_addon_is_deterministic(self):
         definition, first = self.prepare()
@@ -226,6 +239,86 @@ class AppModeCliTests(unittest.TestCase):
         code, _, err = self.run_cli("new", "not-a-preset", "--no-launch")
         self.assertEqual(2, code)
         self.assertIn("neither a preset", err)
+
+    def test_custom_css_command_sets_switches_and_removes(self):
+        self.assertEqual(0, self.run_cli("new", "messenger", "--no-launch")[0])
+        library = self.root / "am" / "library"
+        style = self.root / "messenger.user.css"
+        style.write_bytes("\ufeff/* ==UserStyle==\n@name messenger.com\n==/UserStyle== */\np { color: red }\n".encode())
+        code, out, err = self.run_cli("css", "messenger", str(style))
+        self.assertEqual((0, ""), (code, err))
+        saved = library / "messenger.css"
+        self.assertEqual(0o600, saved.stat().st_mode & 0o777)
+        text = saved.read_text()
+        self.assertTrue(text.startswith('/* zen-app: imported from "messenger.user.css" */\n/* ==UserStyle=='), text[:80])
+        self.assertNotIn("\ufeff", text)
+        # Importing the saved copy again does not stack headers.
+        self.assertEqual(0, self.run_cli("css", "messenger", str(saved))[0])
+        self.assertEqual(1, saved.read_text().count("zen-app: imported from"))
+        code, out, _ = self.run_cli("css", "messenger")
+        self.assertIn("custom CSS on", out)
+        self.assertEqual(0, self.run_cli("css", "messenger", "--off")[0])
+        definition = json.loads((library / "messenger.json").read_text())
+        self.assertFalse(definition["settings"]["customCss"])
+        self.assertIn("custom CSS off", self.run_cli("css", "messenger")[1])
+        code, out, _ = self.run_cli("styles", "show", "messenger")
+        self.assertIn("Styles for messenger.com also apply at: https://www.facebook.com/messages", out)
+        self.assertIn(f"Custom CSS (off): {saved}", out)
+        # A new file switches it back on.
+        self.assertEqual(0, self.run_cli("css", "messenger", str(style))[0])
+        self.assertTrue(json.loads((library / "messenger.json").read_text())["settings"]["customCss"])
+        code, out, _ = self.run_cli("css", "messenger", "--remove")
+        self.assertEqual((0, "Messenger: custom CSS removed\n"), (code, out))
+        self.assertFalse(saved.exists())
+
+    def test_custom_css_command_rejects_unusable_files(self):
+        self.assertEqual(0, self.run_cli("new", "discord", "--no-launch")[0])
+        cases = {
+            "big.css": b"a{}" * (render.MAX_CUSTOM_CSS_BYTES // 3 + 1),
+            "latin1.css": "p { content: 'é' }".encode("latin-1"),
+            "empty.css": b"  \n",
+            "nul.css": b"p{}\x00",
+        }
+        for name, data in cases.items():
+            with self.subTest(name=name):
+                path = self.root / name
+                path.write_bytes(data)
+                code, _, err = self.run_cli("css", "discord", str(path))
+                self.assertEqual(2, code)
+                self.assertTrue(err)
+        self.assertFalse((self.root / "am" / "library" / "discord.css").exists())
+        code, _, err = self.run_cli("css", "discord", str(self.root / "missing.css"))
+        self.assertEqual(2, code)
+        self.assertIn("cannot read", err)
+        self.assertEqual(2, self.run_cli("css", "discord", str(self.root / "big.css"), "--off")[0])
+
+    def test_custom_css_for_a_running_app_explains_when_it_applies(self):
+        self.assertEqual(0, self.run_cli("new", "discord", "--no-launch")[0])
+        style = self.root / "d.css"
+        style.write_text("p { color: red }")
+        status = self.root / "am" / "data" / "discord" / "profile" / "zen-app" / "status.json"
+        status.write_text(json.dumps({"statusVersion": 1}))
+        with mock.patch.object(commands, "running_pid", return_value=4242):
+            code, out, _ = self.run_cli("css", "discord", str(style))
+            self.assertEqual(0, code)
+            self.assertIn("older version: close and reopen it", out)
+            status.write_text(json.dumps({"statusVersion": 1, "customCss": {"state": "none"}}))
+            self.assertIn("applies it when you switch to its window", self.run_cli("css", "discord", str(style))[1])
+            code, _, err = self.run_cli("css", "discord", "--off")
+            self.assertEqual(2, code)
+            self.assertIn("is running", err)
+
+    def test_purge_also_deletes_the_custom_css(self):
+        self.assertEqual(0, self.run_cli("new", "discord", "--no-launch")[0])
+        style = self.root / "d.css"
+        style.write_text("p { color: red }")
+        self.assertEqual(0, self.run_cli("css", "discord", str(style))[0])
+        saved = self.root / "am" / "library" / "discord.css"
+        code, out, _ = self.run_cli("rm", "discord", "--yes")
+        self.assertIn(f"custom CSS kept: {saved}", out)
+        self.assertTrue(saved.exists())
+        self.assertEqual(0, self.run_cli("rm", "discord", "--yes", "--purge")[0])
+        self.assertFalse(saved.exists())
 
     def test_presets_list_their_site_styles(self):
         code, out, err = self.run_cli("presets")

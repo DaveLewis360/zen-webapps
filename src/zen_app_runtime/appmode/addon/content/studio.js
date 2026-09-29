@@ -421,7 +421,108 @@ function appearanceSection() {
       )
     );
   }
-  return h("div", {}, choices, h("div", { class: "panel" }, glassRow, tint, controls), MODE === "settings" ? null : stylesPanel(false), ...notes);
+  return h("div", {}, choices, h("div", { class: "panel" }, glassRow, tint, controls), MODE === "settings" ? null : stylesPanel(false), MODE === "settings" ? null : customCssPanel(), ...notes);
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) {
+    return "";
+  }
+  if (bytes < 1024) {
+    return t("css.size.bytes", { n: bytes });
+  }
+  return t("css.size.kb", { n: (bytes / 1024).toLocaleString(model.locale, { maximumFractionDigits: 1 }) });
+}
+
+let cssBusy = false;
+
+async function runCss(action, doneKey) {
+  if (cssBusy) {
+    return;
+  }
+  cssBusy = true;
+  refresh();
+  try {
+    const result = await action();
+    if (result !== null && doneKey) {
+      snackbar(t(doneKey));
+    }
+  } catch (error) {
+    console.error(error);
+    snackbar(t(`css.error.${error?.code || "unknown"}`));
+  } finally {
+    cssBusy = false;
+    refresh();
+  }
+}
+
+/** The user's own CSS: upload or paste, switch, open, remove (with undo). */
+function customCssPanel() {
+  const state = () => model.customCss || { state: "none" };
+  const loaded = () => state().state === "loaded";
+  const button = (className, iconName, label, onclick) =>
+    h("button", { class: `btn ${className}`, type: "button", onclick }, icon(iconName), label);
+
+  const summary = h("div", { class: "body" });
+  const warnings = h("div", { class: "css-warnings" });
+  const path = h("div", { class: "css-path" });
+  const hint = h("div", { class: "css-hint" }, t("css.hint"));
+  const upload = button("tonal", "upload_file", t("css.upload"), () => runCss(() => ZenApp.pickCustomCss(), "css.saved"));
+  const paste = button("outlined", "content_paste", t("css.paste"), () => runCss(() => ZenApp.pasteCustomCss(), "css.saved"));
+  const open = button("text", "open_in_new", t("css.open"), () => ZenApp.openCustomCss());
+  const remove = button("text danger-text", "delete", t("css.remove"), () =>
+    runCss(async () => {
+      const previous = await ZenApp.removeCustomCss();
+      snackbar(
+        t("css.removed"),
+        previous ? { label: t("css.undo"), run: () => runCss(() => ZenApp.importCustomCss(previous.text, { fileName: previous.fileName }), "css.restored") } : null
+      );
+      return null;
+    })
+  );
+  const actions = h("div", { class: "css-actions" }, upload, paste, open, remove);
+  const onOff = toggle(t("css.title"), () => model.settings.customCss !== false, value => ZenApp.setCustomCssEnabled(value).then(refresh));
+
+  const element = row({
+    iconName: "format_paint",
+    title: t("css.title"),
+    text: " ",
+    on: () => loaded() && model.settings.customCss !== false,
+    extra: h("div", {}, warnings, actions, MODE === "settings" ? path : null, hint),
+    trailing: onOff,
+  });
+  element.classList.add("with-control", "custom-css");
+  element.querySelector(".text > .body").replaceWith(summary);
+
+  bind(() => {
+    const css = state();
+    const has = css.state === "loaded" || css.state === "error";
+    if (css.state === "loaded") {
+      const name = css.name || css.fileName || t("css.pasted");
+      const scope = css.sections ? t("css.scope.sections", { matching: css.matching, total: css.sections }) : t("css.scope.app");
+      summary.textContent = [name, formatBytes(css.bytes), scope, ...(css.aliases || [])].filter(Boolean).join(" · ");
+    } else if (css.state === "error") {
+      summary.textContent = t(`css.error.${css.error || "unknown"}`);
+    } else {
+      summary.textContent = t("css.desc");
+    }
+    summary.classList.toggle("bad", css.state === "error");
+    warnings.replaceChildren(
+      ...(css.state === "loaded" ? css.warnings || [] : []).map(code =>
+        h("div", { class: "css-warning" }, icon("warning"), t(`css.warn.${code}`, { sites: (css.elsewhere || []).join(", ") || "?" }))
+      )
+    );
+    upload.lastChild.textContent = has ? t("css.replace") : t("css.upload");
+    open.hidden = !has;
+    remove.hidden = !has;
+    onOff.hidden = !loaded();
+    path.textContent = has ? css.path || "" : "";
+    path.hidden = !has;
+    for (const control of [upload, paste, open, remove, onOff]) {
+      control.disabled = cssBusy;
+    }
+  });
+  return h("div", { class: "panel" }, element);
 }
 
 function stylesPanel(detailed) {
@@ -784,7 +885,7 @@ function renderSettings(root) {
   );
   const names = [
     ["appearance", t("settings.appearance"), appearanceSection],
-    ["styles", t("settings.styles"), () => stylesPanel(true)],
+    ["styles", t("settings.styles"), () => h("div", {}, customCssPanel(), stylesPanel(true))],
     ["permissions", t("settings.permissions"), permissionsSection],
     ["keys", t("settings.keys"), keysSection],
     ["advanced", t("settings.advanced"), advancedSection],
