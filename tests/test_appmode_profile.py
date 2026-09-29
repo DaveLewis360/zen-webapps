@@ -140,6 +140,24 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn("Name=Disc; ord", text)
         self.assertIn('Exec="/opt/my apps/zen-app" "run" "discord" %U', text)
 
+    def test_process_link_follows_the_zen_binary_and_falls_back(self):
+        link = self.paths.app_dir("spotify") / "zen-app-spotify"
+        self.assertEqual(link, launcher.process_executable(self.paths, "spotify", self.zen))
+        self.assertEqual(str(self.zen.binary), os.readlink(link))
+        # A moved Zen installation re-points the link (atomically, no leftovers).
+        other = self.root / "other-zen" / "zen-bin"
+        other.parent.mkdir()
+        other.write_text("#!/bin/sh\n")
+        moved = ZenRuntime(binary=other, version="9.9b", build_id="1", gecko="156.0")
+        self.assertEqual(link, launcher.process_executable(self.paths, "spotify", moved))
+        self.assertEqual(str(other), os.readlink(link))
+        self.assertEqual(["zen-app-spotify"], sorted(p.name for p in link.parent.iterdir() if "zen-app-spotify" in p.name))
+        # Something that cannot be replaced by a link: use Zen directly.
+        blocked = self.paths.app_dir("blocked") / "zen-app-blocked"
+        (blocked / "inside").mkdir(parents=True)
+        self.assertEqual(self.zen.binary, launcher.process_executable(self.paths, "blocked", self.zen))
+        self.assertEqual(["zen-app-blocked"], sorted(p.name for p in blocked.parent.iterdir()))
+
     def test_launch_starts_or_forwards_with_app_identity(self):
         definition, prepared = self.prepare()
         calls = []
@@ -154,8 +172,12 @@ class AppModeProfileTests(unittest.TestCase):
         outcome = launcher.launch(definition, self.paths, self.zen, action="settings", popen=popen)
         self.assertEqual(("started", 4242), (outcome.action, outcome.pid))
         argv, kwargs = calls[0]
+        # Started through <app dir>/zen-app-discord → Zen, so the process is
+        # named after the app and `killall zen-bin` leaves it alone.
+        link = self.paths.app_dir("discord") / "zen-app-discord"
+        self.assertEqual(str(self.zen.binary), os.readlink(link))
         self.assertEqual(
-            [str(self.zen.binary), "--name", "zen-app-discord", "--class", "zen-app-discord", "--profile", str(prepared.render.profile), "about:blank"],
+            [str(link), "--name", "zen-app-discord", "--class", "zen-app-discord", "--profile", str(prepared.render.profile), "about:blank"],
             argv,
         )
         self.assertEqual("zen-app-discord", kwargs["env"]["MOZ_APP_REMOTINGNAME"])

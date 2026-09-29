@@ -78,9 +78,41 @@ def _hyprctl_focus(window_class: str) -> bool:
     return False
 
 
-def zen_argv(zen: ZenRuntime, profile: Path, app_id: str, extra: list[str]) -> list[str]:
+def process_executable(paths: AppModePaths, app_id: str, zen: ZenRuntime) -> Path:
+    """The file an app is started through: ``<app dir>/zen-app-<id>`` → Zen.
+
+    Linux names a process after the file it executes, so the app runs as
+    ``zen-app-<id>`` (the kernel keeps 15 characters) instead of ``zen-bin``:
+    ``killall zen-bin`` aimed at the browser leaves every app running, and
+    ``killall zen-app-<id>`` stops just that app. Gecko resolves the link to
+    find its installation, so nothing else changes. Falls back to the Zen
+    binary itself if the link cannot be made.
+    """
+    link = paths.app_dir(app_id) / desktop_id(app_id)
+    target = str(zen.binary)
+    try:
+        if os.readlink(link) == target:
+            return link
+    except OSError:
+        pass
+    temporary = link.with_name(f".{link.name}.{os.getpid()}")
+    try:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        temporary.unlink(missing_ok=True)
+        os.symlink(target, temporary)
+        os.replace(temporary, link)
+    except OSError:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        return zen.binary
+    return link
+
+
+def zen_argv(executable: Path, profile: Path, app_id: str, extra: list[str]) -> list[str]:
     identity = desktop_id(app_id)
-    return [str(zen.binary), "--name", identity, "--class", identity, "--profile", str(profile), *extra]
+    return [str(executable), "--name", identity, "--class", identity, "--profile", str(profile), *extra]
 
 
 def app_environment(app_id: str) -> dict[str, str]:
@@ -103,6 +135,7 @@ def launch(
 ) -> LaunchOutcome:
     profile = paths.profile_dir(definition.id)
     identity = desktop_id(definition.id)
+    executable = process_executable(paths, definition.id, zen)
     pid = running_pid(profile)
     if pid is not None:
         focused = _hyprctl_focus(identity)
@@ -116,7 +149,7 @@ def launch(
         # A second process with the same profile forwards its command line to
         # the running instance (Gecko remoting) and exits.
         popen(
-            zen_argv(zen, profile, definition.id, extra),
+            zen_argv(executable, profile, definition.id, extra),
             env=app_environment(definition.id),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -136,7 +169,7 @@ def launch(
     with open(log_path, "ab", buffering=0) as log:
         os.chmod(log_path, 0o600)
         process = popen(
-            zen_argv(zen, profile, definition.id, [first_url]),
+            zen_argv(executable, profile, definition.id, [first_url]),
             env=app_environment(definition.id),
             stdin=subprocess.DEVNULL,
             stdout=log,

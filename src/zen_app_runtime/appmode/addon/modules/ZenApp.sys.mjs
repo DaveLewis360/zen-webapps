@@ -85,6 +85,7 @@ class ZenAppRuntime {
     this.started = true;
     this.addonVersion = version;
     this.store = await ConfigStore.load();
+    this.#nameProcess();
     setLocale(this.store.config.locale || Services.locale.appLocaleAsBCP47);
     this.scope = new Scope(this.store.definition);
     applyPrefs(settingsToPrefs(this.settings, this.store.config));
@@ -129,6 +130,41 @@ class ZenAppRuntime {
   }
 
   /* ------------------------------------------------------------ windows */
+
+  /**
+   * Run as `zen-app-<id>` instead of `zen-bin`, so `killall zen-bin` (aimed at
+   * the browser) leaves the app alone. The launcher already starts the app
+   * through a link with that name; this covers in-app restarts, which
+   * re-execute the real zen-bin. Renaming the main thread renames the
+   * process (/proc/<pid>/comm, 15 characters at most).
+   */
+  #nameProcess() {
+    const name = String(this.store.config.desktopId || "").slice(0, 15);
+    if (Services.appinfo.OS !== "Linux" || !/^[\w.-]+$/.test(name)) {
+      return;
+    }
+    let libc = null;
+    try {
+      const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+      libc = ctypes.open("libc.so.6");
+      const pthreadSelf = libc.declare("pthread_self", ctypes.default_abi, ctypes.unsigned_long);
+      const setName = libc.declare(
+        "pthread_setname_np",
+        ctypes.default_abi,
+        ctypes.int,
+        ctypes.unsigned_long,
+        ctypes.char.ptr
+      );
+      const result = setName(pthreadSelf(), name);
+      if (result !== 0) {
+        console.warn(`zen-app: could not rename the process (error ${result})`);
+      }
+    } catch (error) {
+      console.warn("zen-app: could not rename the process", error);
+    } finally {
+      libc?.close();
+    }
+  }
 
   #observe(topic, observer) {
     Services.obs.addObserver(observer, topic);
