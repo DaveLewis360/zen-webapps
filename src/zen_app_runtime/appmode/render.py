@@ -143,6 +143,10 @@ BASELINE_PREFS: dict[str, Any] = {
     "browser.eme.ui.enabled": False,
     "media.videocontrols.picture-in-picture.enabled": False,
     "media.videocontrols.picture-in-picture.video-toggle.enabled": False,
+    # The app publishes its own media player (MPRIS) under its own name;
+    # Gecko's would be called "Mozilla zen-app-<id>". Re-enabled at run time
+    # if the app's own one cannot start.
+    "media.hardwaremediakeys.enabled": False,
     # Browser assistants and prompts that have no place in an app.
     "browser.formfill.enable": False,
     "signon.rememberSignons": False,

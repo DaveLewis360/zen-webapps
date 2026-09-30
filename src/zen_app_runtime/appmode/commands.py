@@ -141,7 +141,7 @@ def cmd_new(
         f"  runtime     {zen.label}\n"
     )
     if launch_after:
-        outcome = launch(definition, paths, zen, **({"popen": popen} if popen else {}))
+        outcome = launch(definition, paths, zen, icon_name=prepared.icon.name, **({"popen": popen} if popen else {}))
         out.write(f"  launch      {outcome.action}\n")
     return 0
 
@@ -159,10 +159,13 @@ def cmd_run(
     paths, library = _context(paths)
     definition = library.load(app_id)
     zen = zen or find_zen()
+    icon_name = None
     if running_pid(paths.profile_dir(app_id)) is None:
         # Never rewrite a live profile; Gecko owns it while running.
-        prepare(definition, paths, library, zen)
-    return launch(definition, paths, zen, url=url, action=action, **({"popen": popen} if popen else {}))
+        icon_name = prepare(definition, paths, library, zen).icon.name
+    return launch(
+        definition, paths, zen, url=url, action=action, icon_name=icon_name, **({"popen": popen} if popen else {})
+    )
 
 
 def cmd_refresh(app_id: str | None, *, out: TextIO | None = None, paths: AppModePaths | None = None,

@@ -24,7 +24,7 @@ this.zenapp = class extends ExtensionAPI {
       "resource://zenapp/modules/ZenApp.sys.mjs"
     );
     this.zenApp = ZenApp;
-    ZenApp.startup({ version: extension.version }).catch(error => {
+    ZenApp.startup({ version: extension.version, rootURI: extension.rootURI }).catch(error => {
       console.error("zen-app: startup failed", error);
     });
   }

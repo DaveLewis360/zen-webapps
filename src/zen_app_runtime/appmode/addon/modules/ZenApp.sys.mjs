@@ -1,6 +1,8 @@
 /* zen-app-runtime app mode: the privileged runtime of one app profile. */
 
 import { AppWindow, STUDIO_URL } from "resource://zenapp/modules/AppWindow.sys.mjs";
+import { applyBrand, currentBrandName, removeBrand } from "resource://zenapp/modules/Brand.sys.mjs";
+import { MediaBridge } from "resource://zenapp/modules/Mpris.sys.mjs";
 import {
   ConfigStore,
   applyPrefs,
@@ -120,6 +122,11 @@ class ZenAppRuntime {
   // Site compatibility fixes: id → whether this Zen ships the script.
   _compatAvailable = {};
   _compatActor = false;
+  // Chrome override naming the app instead of the browser (Brand.sys.mjs).
+  _brand = null;
+  // The app's own MPRIS media player (Mpris.sys.mjs).
+  mpris = { state: "off" };
+  _media = null;
 
   get id() {
     return this.store.config.appId;
@@ -134,7 +141,7 @@ class ZenAppRuntime {
     return this.store.definition;
   }
 
-  async startup({ version }) {
+  async startup({ version, rootURI }) {
     if (this.started) {
       return;
     }
@@ -142,6 +149,12 @@ class ZenAppRuntime {
     this.addonVersion = version;
     this.store = await ConfigStore.load();
     this.#nameProcess();
+    // Notifications and dialogs name the app, not the browser.
+    try {
+      this._brand = await applyBrand(this.name, { directory: ConfigStore.directory, rootURI });
+    } catch (error) {
+      console.error("zen-app: cannot name the app", error);
+    }
     setLocale(this.store.config.locale || Services.locale.appLocaleAsBCP47);
     this.scope = new Scope(this.store.definition);
     applyPrefs(settingsToPrefs(this.settings, this.store.config));
@@ -158,6 +171,7 @@ class ZenAppRuntime {
     this.#watchScheme();
     this._pendingAction = await this.store.takePendingAction();
     this.#observeWindows();
+    this.#startMediaPlayer();
     this.#watchDownloads().catch(error => console.error("zen-app: downloads", error));
     this.#refreshWidevineState();
     if (this.settings.drm && this.widevine.state !== "installed") {
@@ -169,6 +183,7 @@ class ZenAppRuntime {
   }
 
   shutdown() {
+    this.#stopMediaPlayer();
     for (const { topic, observer } of this._observers.splice(0)) {
       try {
         Services.obs.removeObserver(observer, topic);
@@ -190,6 +205,14 @@ class ZenAppRuntime {
     }
     lazy.clearTimeout(this._extensionsTimer);
     this.#unregisterStyles();
+    if (this._brand) {
+      try {
+        removeBrand(this._brand);
+      } catch {
+        // ignore
+      }
+      this._brand = null;
+    }
     try {
       Services.ppmm.sharedData.delete(CUSTOM_CSS_KEY);
       Services.ppmm.sharedData.delete(COMPAT_KEY);
@@ -264,6 +287,38 @@ class ZenAppRuntime {
   #observe(topic, observer) {
     Services.obs.addObserver(observer, topic);
     this._observers.push({ topic, observer });
+  }
+
+  /* ------------------------------------------------- media player */
+
+  /** Publish the app's own MPRIS player; fall back to Gecko's if that fails. */
+  #startMediaPlayer() {
+    try {
+      this._media = new MediaBridge(this, {
+        appId: this.id,
+        identity: this.name,
+        desktopEntry: this.store.config.desktopId || `zen-app-${this.id}`,
+        artDirectory: PathUtils.join(ConfigStore.directory, "mpris-art"),
+      });
+      this._media.start();
+      this.mpris = { state: "own", busName: this._media.busName };
+      // Close it while JS still runs: GLib must not call into a shut-down engine.
+      this.#observe("quit-application", () => this.#stopMediaPlayer());
+    } catch (error) {
+      console.error("zen-app: the app's own media player cannot start; using the browser's", error);
+      this._media = null;
+      Services.prefs.setBoolPref("media.hardwaremediakeys.enabled", true);
+      this.mpris = { state: "native", error: String(error?.message || error) };
+    }
+  }
+
+  #stopMediaPlayer() {
+    try {
+      this._media?.stop();
+    } catch (error) {
+      console.error("zen-app: media player", error);
+    }
+    this._media = null;
   }
 
   #observeWindows() {
@@ -1630,6 +1685,8 @@ class ZenAppRuntime {
         engine: { name: Services.appinfo.name, version: Services.appinfo.version, gecko: Services.appinfo.platformVersion },
         startedAt: new Date().toISOString(),
         onboardingCompleted: !this.store.needsOnboarding,
+        brand: currentBrandName(),
+        mpris: { ...this.mpris },
         widevine: this.widevine.state,
         adblock: { enabled: this.settings.adblock !== false, state: this.adblock.state, version: this.adblock.version || null },
         extensions: this.extensions.map(extension => ({ id: extension.id, version: extension.version, enabled: extension.enabled })),

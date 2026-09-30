@@ -70,6 +70,8 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn(render.SETTINGS_BLOCK_BEGIN, user_js)
         self.assertIn('user_pref("zen.widget.linux.transparency", true);', user_js)
         self.assertIn('user_pref("permissions.default.desktop-notification", 1);', user_js)
+        # The app publishes its own media player; Gecko's is off.
+        self.assertIn('user_pref("media.hardwaremediakeys.enabled", false);', user_js)
         chrome = (profile / "chrome" / "userChrome.css").read_text()
         self.assertIn("--zenapp-tint: 40;", chrome)
         self.assertIn("--zenapp-tint-color: #000000;", chrome)
@@ -100,6 +102,8 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn("modules/UserCss.sys.mjs", names)
         self.assertIn("modules/Extensions.sys.mjs", names)
         self.assertIn("actors/ZenAppCompatChild.sys.mjs", names)
+        for module in ("Brand", "Mpris", "MprisModel"):
+            self.assertIn(f"modules/{module}.sys.mjs", names)
 
     def test_messenger_config_carries_its_style_aliases(self):
         _, prepared = self.prepare("messenger")
@@ -197,6 +201,10 @@ class AppModeProfileTests(unittest.TestCase):
             argv,
         )
         self.assertEqual("zen-app-discord", kwargs["env"]["MOZ_APP_REMOTINGNAME"])
+        # Mixers name the sound streams after the app, with its launcher icon.
+        self.assertEqual(
+            'application.name="Discord" application.icon_name="zen-app-discord"', kwargs["env"]["PULSE_PROP_OVERRIDE"]
+        )
         self.assertTrue(kwargs["start_new_session"])
         pending = json.loads((prepared.render.profile / "zen-app" / "pending.json").read_text())
         self.assertEqual("settings", pending["action"])
@@ -220,6 +228,20 @@ class AppModeProfileTests(unittest.TestCase):
             holder.kill()
             holder.wait()
         self.assertIsNone(launcher.running_pid(prepared.render.profile))
+
+    def test_sound_stream_names_are_quoted_for_libpulse(self):
+        self.assertEqual('application.name="Spotify"', launcher.pulse_properties("Spotify"))
+        self.assertEqual(
+            'application.name="Say \\"hi\\" \\\\ bye" application.icon_name="zen-app-x"',
+            launcher.pulse_properties('Say "hi" \\ bye', "zen-app-x"),
+        )
+        self.assertEqual('application.name="a b"', launcher.pulse_properties("a\nb"))
+        with mock.patch.dict(os.environ, {"PULSE_PROP_OVERRIDE": "application.name=\"Old\"", "ZEN_APP_ID": "old"}):
+            environment = launcher.app_environment("spotify", "Spotify", "spotify")
+        self.assertEqual('application.name="Spotify" application.icon_name="spotify"', environment["PULSE_PROP_OVERRIDE"])
+        self.assertEqual("spotify", environment["ZEN_APP_ID"])
+        # Without a rendered profile the launcher icon name is used.
+        self.assertIn('application.icon_name="zen-app-x"', launcher.app_environment("x", "X")["PULSE_PROP_OVERRIDE"])
 
 
 class AppModeCliTests(unittest.TestCase):

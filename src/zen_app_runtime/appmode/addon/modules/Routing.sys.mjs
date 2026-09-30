@@ -32,6 +32,7 @@ const IDENTITY_ENV = [
   "DESKTOP_STARTUP_ID",
   "XDG_ACTIVATION_TOKEN",
   "ZEN_APP_ID",
+  "PULSE_PROP_OVERRIDE",
 ];
 
 export function hostMatches(host, pattern) {
