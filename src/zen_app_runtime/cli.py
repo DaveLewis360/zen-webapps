@@ -251,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass", "css"}
+APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass", "css", "studio"}
 
 
 def _add_json(parser: argparse.ArgumentParser) -> None:
@@ -306,6 +306,10 @@ def _add_app_mode_commands(commands) -> None:
     _add_json(rm)
 
     commands.add_parser("setup", help="app mode: install the zen-app launcher shim and refresh all apps")
+
+    studio = commands.add_parser("studio", help="app mode: open Webappok, the app manager (focuses it when open)")
+    studio.add_argument("--new", action="store_true", help="go straight to creating a new app")
+    _add_json(studio)
 
     refresh = commands.add_parser("refresh", help="app mode: re-render profiles and launchers")
     refresh.add_argument("app_id", nargs="?")
@@ -364,6 +368,13 @@ def _run_app_mode(arguments: argparse.Namespace) -> int:
         return app_mode.cmd_rm(arguments.app_id, purge=arguments.purge, yes=arguments.yes, as_json=as_json)
     if command == "setup":
         return app_mode.cmd_setup()
+    if command == "studio":
+        from .appmode.manager import cmd_studio
+
+        outcome = cmd_studio(new=arguments.new)
+        if as_json:
+            app_mode.write_json(sys.stdout, {"ok": True, "action": outcome.action, "pid": outcome.pid})
+        return 0 if outcome.action in ("started", "focused", "forwarded") else 1
     if command == "refresh":
         return app_mode.cmd_refresh(arguments.app_id, as_json=as_json)
     if command == "styles":

@@ -86,3 +86,22 @@ class AppModePaths:
     def stored_icon_path(self, app_id: str, extension: str) -> Path:
         """An icon the user picked for an app (png or svg), next to its definition."""
         return self.library / f"{app_id}.{extension}"
+
+    # The Webappok manager: a Zen profile of its own, outside the app ids.
+    def manager_dir(self) -> Path:
+        return self.data / ".manager"
+
+    def manager_profile(self) -> Path:
+        return self.manager_dir() / "profile"
+
+    def manager_definition(self) -> Path:
+        return self.manager_dir() / "manager.json"
+
+    def manager_log(self) -> Path:
+        return self.manager_dir() / "zen.log"
+
+    def manager_desktop_path(self) -> Path:
+        return self.applications / "zen-apps.desktop"
+
+    def manager_icon_path(self) -> Path:
+        return self.icons / "hicolor" / "scalable" / "apps" / "zen-apps.svg"

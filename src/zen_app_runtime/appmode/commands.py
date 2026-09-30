@@ -331,6 +331,8 @@ def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None
     zen = zen or find_zen()
     ids = [app_id] if app_id else library.list_ids()
     results = []
+    if app_id is None:
+        results.append(_refresh_manager(paths, zen, as_json=as_json, out=out))
     for identifier in ids:
         definition = library.load(identifier)
         if running_pid(paths.profile_dir(identifier)) is not None:
@@ -348,6 +350,20 @@ def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None
     return 0
 
 
+def _refresh_manager(paths: AppModePaths, zen: ZenRuntime, *, as_json: bool, out: TextIO) -> dict:
+    """Webappok is refreshed with the apps; it has no library definition."""
+    from .manager import MANAGER_ID, manager_running, prepare_manager
+
+    if manager_running(paths) is not None:
+        if not as_json:
+            out.write(f"{MANAGER_ID}: running — refresh skipped (close it first)\n")
+        return {"id": MANAGER_ID, "skipped": "running", "changed": [], "manager": True}
+    prepared = prepare_manager(paths, zen)
+    if not as_json:
+        out.write(f"{MANAGER_ID}: {', '.join(prepared.render.changed) or 'up to date'}\n")
+    return {"id": MANAGER_ID, "skipped": None, "changed": list(prepared.render.changed), "manager": True}
+
+
 def cmd_setup(*, out: TextIO | None = None, paths: AppModePaths | None = None, zen: ZenRuntime | None = None) -> int:
     out = out or sys.stdout
     paths, library = _context(paths)
@@ -358,8 +374,8 @@ def cmd_setup(*, out: TextIO | None = None, paths: AppModePaths | None = None, z
         out.write(f"  note: {shim.parent} is not on PATH\n")
     zen = zen or find_zen()
     out.write(f"Runtime: {zen.label} at {zen.binary}\n")
-    if library.list_ids():
-        cmd_refresh(None, out=out, paths=paths, zen=zen)
+    # Refreshing everything also renders Webappok and installs its launcher.
+    cmd_refresh(None, out=out, paths=paths, zen=zen)
     return 0
 
 

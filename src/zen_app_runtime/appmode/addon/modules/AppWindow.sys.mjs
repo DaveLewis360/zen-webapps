@@ -15,6 +15,7 @@ import {
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const OWN_KEYSET_ID = "zenapp-keyset";
 export const STUDIO_URL = "chrome://zenapp/content/studio.html";
+export const MANAGER_URL = "chrome://zenapp/content/manager.html";
 
 // Shortcuts an app keeps: editing, reload, zoom, full screen, history, quit.
 const KEEP_KEY_IDS = new Set([
@@ -326,13 +327,15 @@ export class AppWindow {
       menu.prepend(openExternal);
     }
 
-    const separator = this.doc.createXULElement("menuseparator");
-    separator.id = "zenapp-context-sep-settings";
-    const settings = this.doc.createXULElement("menuitem");
-    settings.id = "zenapp-context-settings";
-    settings.setAttribute("label", t("context.settings", { app: this.app.name }));
-    this.#on(settings, "command", () => this.app.openSettings(this.win));
-    menu.append(separator, settings);
+    if (!this.app.isManager) {
+      const separator = this.doc.createXULElement("menuseparator");
+      separator.id = "zenapp-context-sep-settings";
+      const settings = this.doc.createXULElement("menuitem");
+      settings.id = "zenapp-context-settings";
+      settings.setAttribute("label", t("context.settings", { app: this.app.name }));
+      this.#on(settings, "command", () => this.app.openSettings(this.win));
+      menu.append(separator, settings);
+    }
 
     // Speak the app's language in the few browser items an app keeps.
     for (const [id, label] of Object.entries(menuLabels())) {

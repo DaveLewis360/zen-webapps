@@ -1,7 +1,8 @@
 /* zen-app-runtime app mode: the privileged runtime of one app profile. */
 
-import { AppWindow, STUDIO_URL } from "resource://zenapp/modules/AppWindow.sys.mjs";
+import { AppWindow, MANAGER_URL, STUDIO_URL } from "resource://zenapp/modules/AppWindow.sys.mjs";
 import { applyBrand, currentBrandName, removeBrand } from "resource://zenapp/modules/Brand.sys.mjs";
+import { Manager } from "resource://zenapp/modules/Manager.sys.mjs";
 import { MediaBridge } from "resource://zenapp/modules/Mpris.sys.mjs";
 import {
   ConfigStore,
@@ -140,6 +141,15 @@ class ZenAppRuntime {
   get definition() {
     return this.store.definition;
   }
+  /** Webappok, the app manager, rather than a web app. */
+  get isManager() {
+    return this.store?.config.role === "manager";
+  }
+  /** Webappok's link to the zen-app CLI. */
+  get manager() {
+    this._manager ??= new Manager(this);
+    return this._manager;
+  }
 
   async startup({ version, rootURI }) {
     if (this.started) {
@@ -160,25 +170,35 @@ class ZenAppRuntime {
     applyPrefs(settingsToPrefs(this.settings, this.store.config));
     this.#applyPermissions();
     const catalog = this.store.config.zenInternet || {};
-    this.styles = catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
-    this.#registerCssActor();
-    await this.#reloadCustomCss();
-    await this.#setupCompat();
+    // Webappok (the manager) shows its own page: no site styles, CSS or media.
+    const site = !this.isManager;
+    this.styles = site && catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
+    if (site) {
+      this.#registerCssActor();
+      await this.#reloadCustomCss();
+      await this.#setupCompat();
+    }
     this.#registerCommandLine();
     await this.refreshPalette();
     this.#registerStyles();
-    this.#refreshCssImports();
+    if (site) {
+      this.#refreshCssImports();
+    }
     this.#watchScheme();
     this._pendingAction = await this.store.takePendingAction();
     this.#observeWindows();
-    this.#startMediaPlayer();
+    if (site) {
+      this.#startMediaPlayer();
+    }
     this.#watchDownloads().catch(error => console.error("zen-app: downloads", error));
     this.#refreshWidevineState();
     if (this.settings.drm && this.widevine.state !== "installed") {
       this.ensureWidevine().catch(() => {});
     }
-    // The AddonManager is still starting while this add-on starts.
-    this.#watchAddons().catch(error => console.error("zen-app: extensions", error));
+    if (site) {
+      // The AddonManager is still starting while this add-on starts.
+      this.#watchAddons().catch(error => console.error("zen-app: extensions", error));
+    }
     await this.#writeStatus();
   }
 
@@ -367,9 +387,9 @@ class ZenAppRuntime {
     }
     appWindow.finishStartup();
     if (appWindow.main) {
-      this.#showInitialPage(appWindow);
       const pending = this._pendingAction;
       this._pendingAction = null;
+      this.#showInitialPage(appWindow, pending);
       if (pending?.action === "settings" && !this.store.needsOnboarding) {
         this.openSettings(win);
       } else if (pending?.action === "open" && pending.url) {
@@ -434,7 +454,12 @@ class ZenAppRuntime {
     }
   }
 
-  #showInitialPage(appWindow) {
+  #showInitialPage(appWindow, pending) {
+    if (this.isManager) {
+      const view = pending?.action === "new" ? "?view=new" : "";
+      appWindow.loadInAppBrowser(Services.io.newURI(`${MANAGER_URL}${view}`), { replace: true });
+      return;
+    }
     if (this.store.needsOnboarding) {
       appWindow.loadInAppBrowser(Services.io.newURI(`${STUDIO_URL}?mode=onboarding`), { replace: true });
       return;
@@ -475,6 +500,10 @@ class ZenAppRuntime {
   }
 
   openSettings(win) {
+    if (this.isManager) {
+      // Webappok has no settings of its own; each app has.
+      return;
+    }
     const target = win && !win.closed ? win : this.mainWindow?.win;
     if (!target) {
       return;
@@ -553,6 +582,9 @@ class ZenAppRuntime {
     }
     if (action === "settings") {
       this.openSettings(win);
+    }
+    if (action === "new" && this.isManager) {
+      this.#emit("manager:new");
     }
   }
 

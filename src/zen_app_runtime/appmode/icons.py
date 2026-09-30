@@ -146,15 +146,19 @@ def _contrast_text(accent: str) -> str:
     return "#1b1b1f" if luminance > 0.42 else "#ffffff"
 
 
-def generated_icon_svg(name: str, accent: str) -> str:
-    """A 9-sided M3 Expressive cookie shape with the app's initial."""
+def cookie_path(lobes: int = 9, amplitude: float = 0.075, radius: float = 108.0, center: float = 128.0) -> str:
+    """SVG path of an M3 Expressive "cookie" shape in a 256×256 box."""
     points = []
-    lobes, amplitude, radius = 9, 0.075, 108.0
     for step in range(216):
         angle = 2 * math.pi * step / 216 - math.pi / 2
         r = radius * (1 + amplitude * math.cos(lobes * (angle + math.pi / 2)))
-        points.append(f"{128 + r * math.cos(angle):.2f},{128 + r * math.sin(angle):.2f}")
-    path = "M" + " L".join(points) + " Z"
+        points.append(f"{center + r * math.cos(angle):.2f},{center + r * math.sin(angle):.2f}")
+    return "M" + " L".join(points) + " Z"
+
+
+def generated_icon_svg(name: str, accent: str) -> str:
+    """A 9-sided M3 Expressive cookie shape with the app's initial."""
+    path = cookie_path()
     initial = escape((name.strip()[:1] or "?").upper())
     text = _contrast_text(accent)
     return (
@@ -163,6 +167,29 @@ def generated_icon_svg(name: str, accent: str) -> str:
         f'  <text x="128" y="128" dy="0.35em" text-anchor="middle" fill="{text}" '
         'font-family="Google Sans Flex, Google Sans, Roboto Flex, Roboto, sans-serif" '
         f'font-size="118" font-weight="700">{initial}</text>\n'
+        "</svg>\n"
+    )
+
+
+def manager_icon_svg() -> str:
+    """The Webappok icon: a 12-lobed cookie holding a grid of three apps and a plus."""
+    path = cookie_path(lobes=12, amplitude=0.055)
+    tiles = "\n".join(
+        f'  <rect x="{x}" y="{y}" width="50" height="50" rx="16" fill="{fill}"/>'
+        for x, y, fill in ((71, 71, "#ffffff"), (135, 71, "#e8def8"), (71, 135, "#e8def8"))
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">\n'
+        "  <defs>\n"
+        '    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\n'
+        '      <stop offset="0" stop-color="#8e6fe8"/>\n'
+        '      <stop offset="1" stop-color="#5b3fbf"/>\n'
+        "    </linearGradient>\n"
+        "  </defs>\n"
+        f'  <path d="{path}" fill="url(#g)"/>\n'
+        f"{tiles}\n"
+        '  <circle cx="160" cy="160" r="25" fill="#ffd8e4"/>\n'
+        '  <path d="M160 147v26M147 160h26" stroke="#5b3fbf" stroke-width="7" stroke-linecap="round"/>\n'
         "</svg>\n"
     )
 

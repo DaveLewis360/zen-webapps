@@ -342,7 +342,7 @@ def build_addon() -> tuple[bytes, str]:
     return buffer.getvalue(), version
 
 
-def _locale_hint() -> str:
+def locale_hint() -> str:
     for variable in ("LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"):
         value = os.environ.get(variable, "")
         if value and value not in ("C", "POSIX"):
@@ -361,17 +361,21 @@ def render_app_config(
     sources: dict[str, Any] | None = None,
     inherited: dict[str, Any] | None = None,
     inherited_from: Path | None = None,
+    *,
+    identity: str | None = None,
+    role: str = "app",
 ) -> dict[str, Any]:
     preset = get_preset(definition.preset) if definition.preset else None
-    locale = _locale_hint()
+    locale = locale_hint()
     language = locale.split("-")[0].lower()
     tagline = ""
     if preset and preset.tagline:
         tagline = preset.tagline.get(language) or preset.tagline.get("en", "")
     return {
         "configVersion": 1,
+        "role": role,
         "appId": definition.id,
-        "desktopId": desktop_id(definition.id),
+        "desktopId": identity or desktop_id(definition.id),
         "definitionPath": str(definition_path),
         "definition": definition_to_dict(definition),
         "tagline": tagline,
@@ -414,10 +418,14 @@ def render_profile(
     zen: ZenRuntime,
     icon: IconChoice,
     definition_path: Path,
+    *,
+    profile: Path | None = None,
+    identity: str | None = None,
+    role: str = "app",
 ) -> RenderResult:
-    profile = paths.profile_dir(definition.id)
+    profile = profile or paths.profile_dir(definition.id)
     profile.mkdir(parents=True, exist_ok=True)
-    os.chmod(paths.app_dir(definition.id), 0o700)
+    os.chmod(profile.parent, 0o700)
     os.chmod(profile, 0o700)
     result = RenderResult(profile=profile)
     window_chrome_auto = resolve_window_chrome_auto()
@@ -435,7 +443,7 @@ def render_profile(
             json.dumps(
                 render_app_config(
                     definition, paths, zen, icon, definition_path, version, window_chrome_auto,
-                    sources, inherited, inherited_from,
+                    sources, inherited, inherited_from, identity=identity, role=role,
                 ),
                 indent=2,
                 ensure_ascii=False,

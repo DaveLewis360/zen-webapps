@@ -20,14 +20,14 @@ _GENERIC_NAMES = {
 }
 
 
-def _value(text: str) -> str:
+def desktop_value(text: str) -> str:
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
         raise AppModeError("desktop entry values cannot contain control characters")
     return text.replace("\\", "\\\\")
 
 
 def _list(values: tuple[str, ...]) -> str:
-    return "".join(_value(item).replace(";", "\\;") + ";" for item in values)
+    return "".join(desktop_value(item).replace(";", "\\;") + ";" for item in values)
 
 
 def render_desktop_entry(definition: AppDefinition, icon: IconChoice, shim: Path) -> str:
@@ -39,18 +39,18 @@ def render_desktop_entry(definition: AppDefinition, icon: IconChoice, shim: Path
         "[Desktop Entry]",
         "Type=Application",
         "Version=1.5",
-        f"Name={_value(definition.name)}",
-        f"Comment={_value(comment_en)}",
-        f"Comment[hu]={_value(comment_hu)}",
+        f"Name={desktop_value(definition.name)}",
+        f"Comment={desktop_value(comment_en)}",
+        f"Comment[hu]={desktop_value(comment_hu)}",
     ]
     for category, names in _GENERIC_NAMES.items():
         if category in definition.categories:
-            lines.append(f"GenericName={_value(names['en'])}")
-            lines.append(f"GenericName[hu]={_value(names['hu'])}")
+            lines.append(f"GenericName={desktop_value(names['en'])}")
+            lines.append(f"GenericName[hu]={desktop_value(names['hu'])}")
             break
     lines += [
         f"Exec={render_exec([str(shim), 'run', definition.id])} %U",
-        f"Icon={_value(icon.name)}",
+        f"Icon={desktop_value(icon.name)}",
         "Terminal=false",
         "StartupNotify=true",
         f"StartupWMClass={identity}",
@@ -78,7 +78,7 @@ def install_desktop_entry(paths: AppModePaths, definition: AppDefinition, icon: 
         raise AppModeError("desktop entry Exec must not reference zen-browser (xdg-settings would treat it as a browser)")
     changed = write_private_file(target, content.encode("utf-8"), mode=0o644)
     if changed:
-        _refresh_caches(paths)
+        refresh_desktop_caches(paths)
     return target
 
 
@@ -93,10 +93,10 @@ def remove_desktop_entry(paths: AppModePaths, app_id: str) -> None:
             paths.generated_icon_path(app_id).with_suffix(extension).unlink()
         except FileNotFoundError:
             pass
-    _refresh_caches(paths)
+    refresh_desktop_caches(paths)
 
 
-def _refresh_caches(paths: AppModePaths) -> None:
+def refresh_desktop_caches(paths: AppModePaths) -> None:
     tool = shutil.which("update-desktop-database")
     if tool and paths.applications.is_dir():
         subprocess.run([tool, "-q", str(paths.applications)], check=False, timeout=15,

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html data-mode="manager">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: resource: file: moz-icon: data: blob:; font-src chrome: resource: file:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title></title>
+    <link rel="stylesheet" href="chrome://zenapp/content/studio.css" />
+    <link rel="stylesheet" href="chrome://zenapp/content/manager.css" />
+    <script src="chrome://zenapp/content/shapes.js"></script>
+    <script src="chrome://zenapp/content/ui.js"></script>
+    <script src="chrome://zenapp/content/manager.js" defer></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="snackbar" id="snackbar" role="status" aria-live="polite">
+      <span id="snackbar-text"></span>
+      <button class="btn text" id="snackbar-action" hidden></button>
+    </div>
+  </body>
+</html>
