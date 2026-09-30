@@ -167,6 +167,24 @@ def generated_icon_svg(name: str, accent: str) -> str:
     )
 
 
+def find_icon_file(icon_names: tuple[str, ...]) -> Path | None:
+    """The file an icon name resolves to (current theme first), without copying anything."""
+    chain = _theme_chain()
+    for icon in icon_names:
+        for theme in chain:
+            found = _find_in_theme(theme, icon)
+            if found:
+                return found
+    for icon in icon_names:
+        for theme in _all_installed_themes():
+            if theme in chain:
+                continue
+            found = _find_in_theme(theme, icon)
+            if found:
+                return found
+    return None
+
+
 def resolve_icon(
     paths: AppModePaths,
     app_id: str,

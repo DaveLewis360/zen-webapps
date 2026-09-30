@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -11,11 +11,18 @@ import shlex
 import shutil
 import sys
 from typing import TextIO
+from urllib.parse import urlsplit
 
-from .definition import AppDefinition, definition_from_preset, definition_from_url, with_settings
+from .definition import (
+    AppDefinition,
+    definition_from_preset,
+    definition_from_url,
+    validate_host_pattern,
+    with_settings,
+)
 from .desktop_entry import install_desktop_entry, remove_desktop_entry
 from .errors import AppModeError
-from .icons import IconChoice, resolve_icon
+from .icons import IconChoice, find_icon_file, resolve_icon
 from .launcher import LaunchOutcome, launch, running_pid
 from .library import Library, write_private_file
 from .paths import AppModePaths, desktop_id
@@ -93,6 +100,112 @@ def _context(paths: AppModePaths | None) -> tuple[AppModePaths, Library]:
     return paths, Library(paths.library)
 
 
+def write_json(out: TextIO, data) -> None:
+    out.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+MAX_ICON_BYTES = 1024 * 1024
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def read_icon_source(source: Path) -> tuple[bytes, str]:
+    """Bytes and kind ("png" or "svg") of an icon file picked for an app."""
+    try:
+        size = source.stat().st_size
+        if size > MAX_ICON_BYTES:
+            raise AppModeError(f"{source} is too large for an icon ({size} bytes; at most {MAX_ICON_BYTES})", code="badIcon")
+        data = source.read_bytes()
+    except OSError as error:
+        raise AppModeError(f"cannot read {source}: {error.strerror or error}", code="badIcon") from error
+    if data.startswith(_PNG_MAGIC):
+        return data, "png"
+    head = data[:1024].lstrip(b"\xef\xbb\xbf").lstrip()
+    if head[:1] == b"<" and b"<svg" in data[:65536]:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise AppModeError(f"{source} is not a PNG or SVG image", code="badIcon") from error
+        return data, "svg"
+    raise AppModeError(f"{source} is not a PNG or SVG image", code="badIcon")
+
+
+def _host_values(values, flag: str) -> tuple[str, ...]:
+    hosts: list[str] = []
+    for value in values or ():
+        host = validate_host_pattern(str(value).strip().lower(), flag)
+        if host not in hosts:
+            hosts.append(host)
+    return tuple(hosts)
+
+
+def free_app_id(library: Library, app_id: str) -> str | None:
+    """``app_id`` if it is free, else the first free ``app_id-2`` … ``app_id-99``."""
+    if not library.exists(app_id):
+        return app_id
+    for number in range(2, 100):
+        suffix = f"-{number}"
+        candidate = app_id[: 64 - len(suffix)].rstrip("-") + suffix
+        if not library.exists(candidate):
+            return candidate
+    return None
+
+
+def build_definition(
+    source: str,
+    catalog: dict,
+    *,
+    app_id: str | None = None,
+    name: str | None = None,
+    appearance: str | None = None,
+    hosts=(),
+    auth_hosts=(),
+    accent: str | None = None,
+) -> AppDefinition:
+    """The definition `zen-app new SOURCE …` creates (nothing is written)."""
+    options = {
+        "app_id": app_id,
+        "name": name.strip() if isinstance(name, str) and name.strip() else None,
+        "appearance": appearance,
+        "hosts": _host_values(hosts, "--host"),
+        "auth_hosts": _host_values(auth_hosts, "--auth-host"),
+        "accent": accent.strip().lower() if accent else None,
+    }
+    preset = get_preset(source)
+    if preset:
+        return definition_from_preset(preset, **options)
+    if source.startswith("https://"):
+        host = urlsplit(source).hostname or ""
+        site = zen_internet.best_match(catalog["website"], host, catalog.get("mapping"))
+        translucent = bool(site and zen_internet.site_has_transparency(catalog["website"][site]))
+        return definition_from_url(source, has_translucent_style=translucent, **options)
+    known = ", ".join(sorted(PRESETS))
+    raise AppModeError(f"{source!r} is neither a preset ({known}) nor an https:// URL", code="badSource")
+
+
+def app_summary(definition: AppDefinition, library: Library) -> dict:
+    return {
+        "id": definition.id,
+        "name": definition.name,
+        "url": definition.start_url,
+        "preset": definition.preset,
+        "appearance": definition.settings.appearance,
+        "hosts": list(definition.scope_hosts),
+        "paths": list(definition.scope_paths),
+        "authHosts": list(definition.auth_hosts),
+        "accent": definition.accent,
+        "icon": definition.icon,
+        "windowClass": desktop_id(definition.id),
+        "definition": str(library.path_for(definition.id)),
+    }
+
+
+def style_matches(catalog: dict, definition: AppDefinition) -> list[dict]:
+    matches = zen_internet.match_hosts(
+        catalog, [*definition.scope_hosts, *definition.auth_hosts], exact_only=set(definition.auth_hosts)
+    )
+    return [{"site": site, "features": len(catalog["website"][site]), "hosts": hosts} for site, hosts in matches.items()]
+
+
 def cmd_new(
     source: str,
     *,
@@ -100,6 +213,12 @@ def cmd_new(
     name: str | None,
     appearance: str | None,
     launch_after: bool,
+    hosts=(),
+    auth_hosts=(),
+    accent: str | None = None,
+    icon: str | None = None,
+    dry_run: bool = False,
+    as_json: bool = False,
     out: TextIO | None = None,
     paths: AppModePaths | None = None,
     zen: ZenRuntime | None = None,
@@ -107,41 +226,78 @@ def cmd_new(
 ) -> int:
     out = out or sys.stdout
     paths, library = _context(paths)
-    preset = get_preset(source)
     catalog = zen_internet.load_catalog(zen_internet.catalog_path(paths))
-    if preset:
-        definition = definition_from_preset(preset, app_id=app_id, name=name, appearance=appearance)
-    elif source.startswith("https://"):
-        from urllib.parse import urlsplit
+    definition = build_definition(
+        source, catalog, app_id=app_id, name=name, appearance=appearance, hosts=hosts, auth_hosts=auth_hosts, accent=accent
+    )
+    icon_data: tuple[bytes, str] | None = None
+    if icon:
+        icon_data = read_icon_source(Path(icon).expanduser())
+        definition = replace(definition, icon=str(paths.stored_icon_path(definition.id, icon_data[1])))
+    styles = style_matches(catalog, definition)
 
-        host = urlsplit(source).hostname or ""
-        site = zen_internet.best_match(catalog["website"], host, catalog.get("mapping"))
-        translucent = bool(site and zen_internet.site_has_transparency(catalog["website"][site]))
-        definition = definition_from_url(
-            source, app_id=app_id, name=name, appearance=appearance, has_translucent_style=translucent
+    if dry_run:
+        free = free_app_id(library, definition.id)
+        if as_json:
+            write_json(
+                out,
+                {
+                    "ok": True,
+                    "dryRun": True,
+                    "app": app_summary(definition, library),
+                    "styles": styles,
+                    "idTaken": free != definition.id,
+                    "suggestedId": free,
+                },
+            )
+            return 0
+        taken = "" if free == definition.id else f"  (taken; free: {free or 'none'})"
+        out.write(
+            f"Would create {definition.name} ({definition.id}){taken}\n"
+            f"  url         {definition.start_url}\n"
+            f"  scope       {', '.join(definition.scope_hosts)}\n"
+            f"  sign-in     {', '.join(definition.auth_hosts) or 'none'}\n"
+            f"  styles      Zen Internet: {', '.join(s['site'] for s in styles) or 'none'}\n"
+            f"  appearance  {definition.settings.appearance}\n"
         )
-    else:
-        known = ", ".join(sorted(PRESETS))
-        raise AppModeError(f"{source!r} is neither a preset ({known}) nor an https:// URL")
+        return 0
+
     zen = zen or find_zen()
     library.create(definition)
+    if icon_data:
+        write_private_file(paths.stored_icon_path(definition.id, icon_data[1]), icon_data[0])
     prepared = prepare(definition, paths, library, zen)
-    matches = zen_internet.match_hosts(
-        catalog, [*definition.scope_hosts, *definition.auth_hosts], exact_only=set(definition.auth_hosts)
-    )
-    styles = ", ".join(f"{site} ({len(catalog['website'][site])})" for site in matches) or "none"
+    outcome = None
+    if launch_after:
+        outcome = launch(definition, paths, zen, icon_name=prepared.icon.name, **({"popen": popen} if popen else {}))
+    if as_json:
+        write_json(
+            out,
+            {
+                "ok": True,
+                "dryRun": False,
+                "app": app_summary(definition, library),
+                "styles": styles,
+                "profile": str(prepared.render.profile),
+                "launcher": str(prepared.desktop_entry),
+                "iconFile": str(prepared.icon.file) if prepared.icon.file else None,
+                "runtime": zen.label,
+                "launch": outcome.action if outcome else None,
+            },
+        )
+        return 0
+    style_text = ", ".join(f"{s['site']} ({s['features']})" for s in styles) or "none"
     out.write(
         f"Created {definition.name} ({definition.id})\n"
         f"  definition  {library.path_for(definition.id)}\n"
         f"  profile     {prepared.render.profile}\n"
         f"  launcher    {prepared.desktop_entry}\n"
         f"  icon        {prepared.icon.name} ({prepared.icon.source})\n"
-        f"  styles      Zen Internet: {styles}\n"
+        f"  styles      Zen Internet: {style_text}\n"
         f"  appearance  {definition.settings.appearance}\n"
         f"  runtime     {zen.label}\n"
     )
-    if launch_after:
-        outcome = launch(definition, paths, zen, icon_name=prepared.icon.name, **({"popen": popen} if popen else {}))
+    if outcome:
         out.write(f"  launch      {outcome.action}\n")
     return 0
 
@@ -168,20 +324,27 @@ def cmd_run(
     )
 
 
-def cmd_refresh(app_id: str | None, *, out: TextIO | None = None, paths: AppModePaths | None = None,
-                zen: ZenRuntime | None = None) -> int:
+def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None = None,
+                paths: AppModePaths | None = None, zen: ZenRuntime | None = None) -> int:
     out = out or sys.stdout
     paths, library = _context(paths)
     zen = zen or find_zen()
     ids = [app_id] if app_id else library.list_ids()
+    results = []
     for identifier in ids:
         definition = library.load(identifier)
         if running_pid(paths.profile_dir(identifier)) is not None:
-            out.write(f"{identifier}: running — refresh skipped (close it first)\n")
+            results.append({"id": identifier, "skipped": "running", "changed": []})
+            if not as_json:
+                out.write(f"{identifier}: running — refresh skipped (close it first)\n")
             continue
         prepared = prepare(definition, paths, library, zen)
-        changed = ", ".join(prepared.render.changed) or "up to date"
-        out.write(f"{identifier}: {changed}\n")
+        results.append({"id": identifier, "skipped": None, "changed": list(prepared.render.changed)})
+        if not as_json:
+            changed = ", ".join(prepared.render.changed) or "up to date"
+            out.write(f"{identifier}: {changed}\n")
+    if as_json:
+        write_json(out, {"ok": True, "apps": results})
     return 0
 
 
@@ -200,6 +363,16 @@ def cmd_setup(*, out: TextIO | None = None, paths: AppModePaths | None = None, z
     return 0
 
 
+def _rendered_icon(profile: Path) -> str | None:
+    try:
+        config = json.loads((profile / "zen-app" / "app.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    icon = config.get("icon") if isinstance(config, dict) else None
+    file = icon.get("file") if isinstance(icon, dict) else None
+    return file if isinstance(file, str) and Path(file).is_file() else None
+
+
 def cmd_apps(*, out: TextIO | None = None, paths: AppModePaths | None = None, as_json: bool = False) -> int:
     out = out or sys.stdout
     paths, library = _context(paths)
@@ -210,8 +383,9 @@ def cmd_apps(*, out: TextIO | None = None, paths: AppModePaths | None = None, as
         except AppModeError as error:
             rows.append({"id": identifier, "error": str(error)})
             continue
-        pid = running_pid(paths.profile_dir(identifier))
-        status_path = paths.profile_dir(identifier) / "zen-app" / "status.json"
+        profile = paths.profile_dir(identifier)
+        pid = running_pid(profile)
+        status_path = profile / "zen-app" / "status.json"
         try:
             status = json.loads(status_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -227,10 +401,16 @@ def cmd_apps(*, out: TextIO | None = None, paths: AppModePaths | None = None, as
                 "onboarded": not definition.needs_onboarding,
                 "addon": status.get("addonVersion"),
                 "windowClass": desktop_id(identifier),
+                "preset": definition.preset,
+                "accent": definition.accent,
+                "hosts": list(definition.scope_hosts),
+                "authHosts": list(definition.auth_hosts),
+                "icon": _rendered_icon(profile),
+                "customCss": paths.custom_css_path(identifier).is_file(),
             }
         )
     if as_json:
-        out.write(json.dumps(rows, indent=2) + "\n")
+        write_json(out, rows)
         return 0
     if not rows:
         out.write("No apps yet. Try: zen-app new spotify\n")
@@ -244,13 +424,39 @@ def cmd_apps(*, out: TextIO | None = None, paths: AppModePaths | None = None, as
     return 0
 
 
-def cmd_presets(*, out: TextIO | None = None, paths: AppModePaths | None = None) -> int:
+def cmd_presets(*, as_json: bool = False, out: TextIO | None = None, paths: AppModePaths | None = None) -> int:
     out = out or sys.stdout
-    paths = paths or AppModePaths.default()
+    paths, library = _context(paths)
     try:
         catalog = zen_internet.load_catalog(zen_internet.catalog_path(paths))
     except AppModeError:
         catalog = None
+    if as_json:
+        installed: dict[str, list[str]] = {}
+        for identifier in library.list_ids():
+            try:
+                preset_key = library.load(identifier).preset
+            except AppModeError:
+                continue
+            if preset_key:
+                installed.setdefault(preset_key, []).append(identifier)
+        rows = []
+        for key, preset in sorted(PRESETS.items()):
+            icon = find_icon_file(preset.icon_names)
+            rows.append(
+                {
+                    "key": key,
+                    "name": preset.name,
+                    "url": preset.start_url,
+                    "accent": preset.accent,
+                    "tagline": dict(preset.tagline),
+                    "categories": list(preset.categories),
+                    "icon": str(icon) if icon else None,
+                    "installed": installed.get(key, []),
+                }
+            )
+        write_json(out, rows)
+        return 0
     for key, preset in sorted(PRESETS.items()):
         # Site look = matching Zen Internet catalog styles + app-mode extras.
         looks: list[str] = []
@@ -263,25 +469,41 @@ def cmd_presets(*, out: TextIO | None = None, paths: AppModePaths | None = None)
     return 0
 
 
-def cmd_rm(app_id: str, *, purge: bool, yes: bool, out: TextIO | None = None, paths: AppModePaths | None = None) -> int:
+def cmd_rm(app_id: str, *, purge: bool, yes: bool, as_json: bool = False, out: TextIO | None = None,
+           paths: AppModePaths | None = None) -> int:
     out = out or sys.stdout
     paths, library = _context(paths)
     if not yes:
-        raise AppModeError("removal requires --yes" + (" (--purge also deletes the profile and its logins)" if purge else ""))
+        raise AppModeError(
+            "removal requires --yes" + (" (--purge also deletes the profile and its logins)" if purge else ""), code="confirm"
+        )
     if running_pid(paths.profile_dir(app_id)) is not None:
-        raise AppModeError(f"{app_id} is running; close it first")
+        raise AppModeError(f"{app_id} is running; close it first", code="running")
+    try:
+        stored_icon = library.load(app_id).icon
+    except AppModeError:
+        stored_icon = None
     removed = library.delete(app_id)
     remove_desktop_entry(paths, app_id)
     if purge:
         shutil.rmtree(paths.app_dir(app_id), ignore_errors=True)
         paths.custom_css_path(app_id).unlink(missing_ok=True)
+        # Only an icon the app itself stored (zen-app new --icon) goes with it.
+        for extension in ("png", "svg"):
+            candidate = paths.stored_icon_path(app_id, extension)
+            if stored_icon == str(candidate):
+                candidate.unlink(missing_ok=True)
+    css_kept = str(paths.custom_css_path(app_id)) if not purge and paths.custom_css_path(app_id).is_file() else None
+    if as_json:
+        write_json(out, {"ok": True, "id": app_id, "removed": removed, "purged": purge, "cssKept": css_kept})
+        return 0
     out.write(
         f"Removed {app_id}" + (" and its profile" if purge else " (profile kept; use --purge to delete it)") + "\n"
         if removed or purge
         else f"{app_id} had no definition; launcher entry cleaned up\n"
     )
-    if not purge and paths.custom_css_path(app_id).is_file():
-        out.write(f"  custom CSS kept: {paths.custom_css_path(app_id)}\n")
+    if css_kept:
+        out.write(f"  custom CSS kept: {css_kept}\n")
     return 0
 
 
@@ -366,7 +588,7 @@ def cmd_css(
         return 0
     if state in ("on", "off"):
         if running:
-            raise AppModeError(f"{app_id} is running; use the switch in its settings (Ctrl+,) or close it first")
+            raise AppModeError(f"{app_id} is running; use the switch in its settings (Ctrl+,) or close it first", code="running")
         library.save(with_settings(definition, custom_css=state == "on"))
         out.write(f"{definition.name}: custom CSS switched {state}\n")
         return 0

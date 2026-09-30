@@ -69,7 +69,7 @@ def find_zen() -> ZenRuntime:
     if override:
         path = Path(override)
         if not path.is_absolute() or not _usable(path):
-            raise AppModeError(f"{BINARY_OVERRIDE_ENV} must name an absolute executable Zen binary")
+            raise AppModeError(f"{BINARY_OVERRIDE_ENV} must name an absolute executable Zen binary", code="noZen")
         return _describe(path)
     for candidate in _CANDIDATES:
         path = Path(candidate)
@@ -88,5 +88,6 @@ def find_zen() -> ZenRuntime:
             return _describe(resolved)
     raise AppModeError(
         "Zen Browser was not found; install it (e.g. zen-browser-bin) "
-        f"or point {BINARY_OVERRIDE_ENV} at the zen-bin executable"
+        f"or point {BINARY_OVERRIDE_ENV} at the zen-bin executable",
+        code="noZen",
     )

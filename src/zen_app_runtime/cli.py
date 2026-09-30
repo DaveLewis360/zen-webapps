@@ -254,6 +254,10 @@ def build_parser() -> argparse.ArgumentParser:
 APP_MODE_COMMANDS = {"new", "run", "settings", "apps", "presets", "rm", "setup", "refresh", "styles", "glass", "css"}
 
 
+def _add_json(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true", help="machine-readable output (errors too, on stdout)")
+
+
 def _add_app_mode_commands(commands) -> None:
     """App mode: native-feeling apps on the package-managed Zen runtime."""
     new = commands.add_parser(
@@ -266,29 +270,46 @@ def _add_app_mode_commands(commands) -> None:
     appearance = new.add_mutually_exclusive_group()
     appearance.add_argument("--transparent", dest="appearance", action="store_const", const="transparent")
     appearance.add_argument("--opaque", dest="appearance", action="store_const", const="opaque")
+    new.add_argument(
+        "--host", dest="hosts", action="append", default=[], metavar="HOST",
+        help="another host that stays inside the app, e.g. '*.slack.com' (repeatable)",
+    )
+    new.add_argument(
+        "--auth-host", dest="auth_hosts", action="append", default=[], metavar="HOST",
+        help="a sign-in host that must return to the app, e.g. accounts.google.com (repeatable)",
+    )
+    new.add_argument("--accent", help="accent colour #rrggbb")
+    new.add_argument("--icon", metavar="FILE", help="PNG or SVG icon (at most 1 MB); stored next to the definition")
+    new.add_argument("--dry-run", action="store_true", help="show what would be created; write nothing")
     new.add_argument("--no-launch", action="store_true", help="only create it; do not start it")
+    _add_json(new)
 
     run = commands.add_parser("run", help="app mode: start an app or focus its window")
     run.add_argument("app_id")
     run.add_argument("url", nargs="?", help="optional deep link to open inside the app")
+    _add_json(run)
 
     settings = commands.add_parser("settings", help="app mode: open an app's settings")
     settings.add_argument("app_id")
+    _add_json(settings)
 
     apps = commands.add_parser("apps", help="app mode: list apps")
-    apps.add_argument("--json", action="store_true")
+    _add_json(apps)
 
-    commands.add_parser("presets", help="app mode: list built-in presets")
+    presets = commands.add_parser("presets", help="app mode: list built-in presets")
+    _add_json(presets)
 
     rm = commands.add_parser("rm", help="app mode: remove an app and its launcher")
     rm.add_argument("app_id")
     rm.add_argument("--purge", action="store_true", help="also delete the profile (logins, data)")
     rm.add_argument("--yes", action="store_true", help="confirm removal")
+    _add_json(rm)
 
     commands.add_parser("setup", help="app mode: install the zen-app launcher shim and refresh all apps")
 
     refresh = commands.add_parser("refresh", help="app mode: re-render profiles and launchers")
     refresh.add_argument("app_id", nargs="?")
+    _add_json(refresh)
 
     styles = commands.add_parser("styles", help="app mode: Zen Internet site styles (show / update)")
     styles.add_argument("styles_action", choices=("show", "update"))
@@ -312,6 +333,7 @@ def _run_app_mode(arguments: argparse.Namespace) -> int:
     from .appmode import commands as app_mode
 
     command = arguments.command
+    as_json = bool(getattr(arguments, "json", False))
     if command == "new":
         return app_mode.cmd_new(
             arguments.source,
@@ -319,23 +341,31 @@ def _run_app_mode(arguments: argparse.Namespace) -> int:
             name=arguments.new_name,
             appearance=arguments.appearance,
             launch_after=not arguments.no_launch,
+            hosts=arguments.hosts,
+            auth_hosts=arguments.auth_hosts,
+            accent=arguments.accent,
+            icon=arguments.icon,
+            dry_run=arguments.dry_run,
+            as_json=as_json,
         )
-    if command == "run":
-        outcome = app_mode.cmd_run(arguments.app_id, url=arguments.url)
+    if command in ("run", "settings"):
+        if command == "run":
+            outcome = app_mode.cmd_run(arguments.app_id, url=arguments.url)
+        else:
+            outcome = app_mode.cmd_run(arguments.app_id, action="settings")
+        if as_json:
+            app_mode.write_json(sys.stdout, {"ok": True, "id": arguments.app_id, "action": outcome.action, "pid": outcome.pid})
         return 0 if outcome.action in ("started", "focused", "forwarded") else 1
-    if command == "settings":
-        app_mode.cmd_run(arguments.app_id, action="settings")
-        return 0
     if command == "apps":
-        return app_mode.cmd_apps(as_json=arguments.json)
+        return app_mode.cmd_apps(as_json=as_json)
     if command == "presets":
-        return app_mode.cmd_presets()
+        return app_mode.cmd_presets(as_json=as_json)
     if command == "rm":
-        return app_mode.cmd_rm(arguments.app_id, purge=arguments.purge, yes=arguments.yes)
+        return app_mode.cmd_rm(arguments.app_id, purge=arguments.purge, yes=arguments.yes, as_json=as_json)
     if command == "setup":
         return app_mode.cmd_setup()
     if command == "refresh":
-        return app_mode.cmd_refresh(arguments.app_id)
+        return app_mode.cmd_refresh(arguments.app_id, as_json=as_json)
     if command == "styles":
         return app_mode.cmd_styles(arguments.styles_action, arguments.target)
     if command == "glass":
@@ -366,14 +396,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command in APP_MODE_COMMANDS:
         from .appmode.errors import AppModeError
 
+        def fail(code: str, message: str) -> int:
+            if getattr(arguments, "json", False):
+                print(json.dumps({"ok": False, "code": code, "message": message}, ensure_ascii=False))
+            else:
+                print(f"error: {message}", file=sys.stderr)
+            return 2
+
         try:
             return _run_app_mode(arguments)
         except AppModeError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return 2
+            return fail(error.code, str(error))
         except OSError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return 2
+            return fail("io", str(error))
     try:
         if arguments.command == "doctor":
             report = doctor_report(

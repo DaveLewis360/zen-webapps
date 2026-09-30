@@ -118,15 +118,15 @@ class AppDefinition:
 
 def validate_app_id(value: Any) -> str:
     if not isinstance(value, str) or not APP_ID_PATTERN.fullmatch(value):
-        raise AppModeError("app id must be a lowercase slug of 1-64 characters (a-z, 0-9, -)")
+        raise AppModeError("app id must be a lowercase slug of 1-64 characters (a-z, 0-9, -)", code="badId")
     return value
 
 
 def validate_name(value: Any) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 80:
-        raise AppModeError("name must contain 1-80 characters")
+        raise AppModeError("name must contain 1-80 characters", code="badName")
     if value != value.strip() or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise AppModeError("name cannot have surrounding whitespace or control characters")
+        raise AppModeError("name cannot have surrounding whitespace or control characters", code="badName")
     return value
 
 
@@ -134,13 +134,13 @@ def validate_start_url(value: Any) -> str:
     try:
         return canonicalize_web_app_url(value)
     except OnboardingError as error:
-        raise AppModeError(str(error)) from error
+        raise AppModeError(str(error), code="badUrl") from error
 
 
 def validate_host_pattern(value: Any, location: str) -> str:
     """Lowercase ASCII hostname, optionally prefixed by ``*.`` for subdomains."""
     if not isinstance(value, str):
-        raise AppModeError(f"{location} must be a hostname string")
+        raise AppModeError(f"{location} must be a hostname string", code="badHost")
     host = value[2:] if value.startswith("*.") else value
     labels = host.split(".")
     if (
@@ -150,7 +150,7 @@ def validate_host_pattern(value: Any, location: str) -> str:
         or len(labels) < 2 and host != "localhost"
         or any(not _HOST_LABEL.fullmatch(label) for label in labels)
     ):
-        raise AppModeError(f"{location} is not a valid lowercase hostname pattern: {value!r}")
+        raise AppModeError(f"{location} is not a valid lowercase hostname pattern: {value!r}", code="badHost")
     return value
 
 
@@ -168,7 +168,7 @@ def _string_tuple(value: Any, location: str, pattern: re.Pattern[str], limit: in
 
 def _host_tuple(value: Any, location: str) -> tuple[str, ...]:
     if not isinstance(value, list) or len(value) > 64:
-        raise AppModeError(f"{location} must be a list of at most 64 hostnames")
+        raise AppModeError(f"{location} must be a list of at most 64 hostnames", code="badHost")
     result: list[str] = []
     for index, item in enumerate(value):
         host = validate_host_pattern(item, f"{location}[{index}]")
@@ -179,7 +179,7 @@ def _host_tuple(value: Any, location: str) -> tuple[str, ...]:
 
 def validate_accent(value: Any) -> str:
     if not isinstance(value, str) or not _HEX_COLOR.fullmatch(value.lower()):
-        raise AppModeError("accent must be a #rrggbb color")
+        raise AppModeError("accent must be a #rrggbb color", code="badColor")
     return value.lower()
 
 
@@ -256,10 +256,10 @@ def definition_from_dict(data: Any) -> AppDefinition:
     start_url = validate_start_url(data["startUrl"])
     start_host = urlsplit(start_url).hostname or ""
     if not host_matches_any(start_host, scope_hosts):
-        raise AppModeError("startUrl host must be inside scope.hosts")
+        raise AppModeError("startUrl host must be inside scope.hosts", code="badHost")
     icon = data.get("icon")
     if icon is not None and (not isinstance(icon, str) or not (_ICON_NAME.fullmatch(icon) or icon.startswith("/"))):
-        raise AppModeError("icon must be an icon-theme name or an absolute path")
+        raise AppModeError("icon must be an icon-theme name or an absolute path", code="badIcon")
     preset = data.get("preset")
     if preset is not None and (not isinstance(preset, str) or not _THEME_ID.fullmatch(preset)):
         raise AppModeError("preset must be a preset key")
@@ -323,12 +323,20 @@ def host_matches_any(host: str, patterns: tuple[str, ...]) -> bool:
     return any(host_matches(host, pattern) for pattern in patterns)
 
 
+def _merged(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(host for group in groups for host in group))
+
+
 def definition_from_preset(
     preset: Preset,
     *,
     app_id: str | None = None,
     name: str | None = None,
     appearance: str | None = None,
+    hosts: tuple[str, ...] = (),
+    auth_hosts: tuple[str, ...] = (),
+    accent: str | None = None,
+    icon: str | None = None,
 ) -> AppDefinition:
     settings = AppSettings(
         appearance=appearance or "transparent",
@@ -341,14 +349,16 @@ def definition_from_preset(
         id=validate_app_id(app_id or preset.key),
         name=validate_name(name or preset.name),
         start_url=validate_start_url(preset.start_url),
-        scope_hosts=tuple(validate_host_pattern(h, "preset scope") for h in preset.scope_hosts),
+        scope_hosts=tuple(
+            validate_host_pattern(h, "preset scope") for h in _merged(preset.scope_hosts, tuple(hosts))
+        ),
         scope_paths=preset.scope_paths,
-        auth_hosts=tuple(validate_host_pattern(h, "preset auth") for h in preset.auth_hosts),
+        auth_hosts=tuple(validate_host_pattern(h, "preset auth") for h in _merged(preset.auth_hosts, tuple(auth_hosts))),
         extras=preset.extras,
-        icon=None,
+        icon=icon,
         categories=preset.categories,
         keywords=preset.keywords,
-        accent=validate_accent(preset.accent),
+        accent=validate_accent(accent or preset.accent),
         preset=preset.key,
         settings=settings,
     )
@@ -379,6 +389,10 @@ def definition_from_url(
     name: str | None = None,
     appearance: str | None = None,
     has_translucent_style: bool = False,
+    hosts: tuple[str, ...] = (),
+    auth_hosts: tuple[str, ...] = (),
+    accent: str | None = None,
+    icon: str | None = None,
 ) -> AppDefinition:
     start_url = validate_start_url(url)
     host = urlsplit(start_url).hostname or ""
@@ -389,11 +403,17 @@ def definition_from_url(
     if name is None:
         label = _name_label(host)
         name = " ".join(part[:1].upper() + part[1:] for part in re.split(r"[-_]+", label) if part) or "Web App"
+    extra = tuple(validate_host_pattern(h, "--host") for h in hosts)
+    # The start host stays in scope; listed on its own unless a pattern covers it.
+    scope = _merged(() if host_matches_any(host, extra) else (host,), extra)
     definition = AppDefinition(
         id=validate_app_id(app_id),
         name=validate_name(name[:80].strip()),
         start_url=start_url,
-        scope_hosts=(host,),
+        scope_hosts=scope,
+        auth_hosts=tuple(validate_host_pattern(h, "--auth-host") for h in _merged(tuple(auth_hosts))),
+        icon=icon,
+        accent=validate_accent(accent) if accent else "#7b6cff",
         settings=AppSettings(appearance=appearance or ("transparent" if has_translucent_style else "opaque")),
     )
     return definition_from_dict(definition_to_dict(definition))

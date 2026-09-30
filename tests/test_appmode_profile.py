@@ -300,6 +300,82 @@ class AppModeCliTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn("neither a preset", err)
 
+    def run_json(self, *args):
+        code, out, err = self.run_cli(*args, "--json")
+        self.assertEqual("", err)
+        return code, json.loads(out)
+
+    def test_dry_run_writes_nothing_and_suggests_a_free_id(self):
+        code, result = self.run_json(
+            "new", "https://app.slack.com/client", "--id", "slack", "--host", "*.Slack.com",
+            "--auth-host", "accounts.google.com", "--accent", "#4A154B", "--dry-run",
+        )
+        self.assertEqual(0, code)
+        app = result["app"]
+        self.assertEqual((True, True, False, "slack"), (result["ok"], result["dryRun"], result["idTaken"], result["suggestedId"]))
+        # A pattern covering the start host replaces it in the scope.
+        self.assertEqual(["*.slack.com"], app["hosts"])
+        self.assertEqual(["accounts.google.com"], app["authHosts"])
+        self.assertEqual("#4a154b", app["accent"])
+        self.assertFalse((self.root / "am" / "library").exists() and any((self.root / "am" / "library").iterdir()))
+        self.assertEqual(0, self.run_cli("new", "https://app.slack.com/client", "--id", "slack", "--no-launch")[0])
+        code, result = self.run_json("new", "https://app.slack.com/client", "--id", "slack", "--dry-run")
+        self.assertEqual((0, True, "slack-2"), (code, result["idTaken"], result["suggestedId"]))
+
+    def test_new_with_icon_hosts_and_colour_then_list_and_purge(self):
+        icon = self.root / "logo.png"
+        icon.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 64)
+        code, result = self.run_json(
+            "new", "https://www.example.com/app", "--name", "  Példa  ", "--host", "cdn.example.com",
+            "--accent", "#123456", "--icon", str(icon), "--no-launch",
+        )
+        self.assertEqual(0, code, result)
+        app = result["app"]
+        stored = self.root / "am" / "library" / "example-com.png"
+        self.assertEqual(("example-com", "Példa", str(stored)), (app["id"], app["name"], app["icon"]))
+        self.assertEqual(["www.example.com", "cdn.example.com"], app["hosts"])
+        self.assertEqual(icon.read_bytes(), stored.read_bytes())
+        self.assertIsNone(result["launch"])
+        code, apps = self.run_json("apps")
+        row = next(r for r in apps if r["id"] == "example-com")
+        self.assertEqual(("#123456", False), (row["accent"], row["running"]))
+        self.assertTrue(row["icon"].endswith("zen-app-example-com.png"))
+        code, result = self.run_json("refresh", "example-com")
+        self.assertEqual({"id": "example-com", "skipped": None, "changed": []}, result["apps"][0])
+        code, result = self.run_json("rm", "example-com", "--yes", "--purge")
+        self.assertEqual((0, True, True), (code, result["removed"], result["purged"]))
+        self.assertFalse(stored.exists())
+
+    def test_json_errors_carry_a_code(self):
+        (self.root / "notes.txt").write_text("hello")
+        cases = [
+            (("new", "https://example.com/", "--host", "bad host"), "badHost"),
+            (("new", "https://example.com/", "--accent", "red"), "badColor"),
+            (("new", "https://example.com/", "--icon", str(self.root / "notes.txt")), "badIcon"),
+            (("new", "http://example.com/"), "badSource"),
+            (("new", "https://example.com/", "--id", "Bad_Id"), "badId"),
+            (("run", "nothing-here"), "notFound"),
+            (("rm", "nothing-here"), "confirm"),
+        ]
+        for args, expected in cases:
+            with self.subTest(args=args):
+                code, result = self.run_json(*args, "--no-launch") if args[0] == "new" else self.run_json(*args)
+                self.assertEqual((2, False, expected), (code, result["ok"], result["code"]), result)
+                self.assertTrue(result["message"])
+        self.assertEqual(0, self.run_cli("new", "spotify", "--no-launch")[0])
+        code, result = self.run_json("new", "spotify", "--no-launch")
+        self.assertEqual((2, "exists"), (code, result["code"]))
+
+    def test_presets_json_lists_what_is_installed(self):
+        self.assertEqual(0, self.run_cli("new", "spotify", "--id", "music", "--no-launch")[0])
+        code, presets = self.run_json("presets")
+        self.assertEqual(0, code)
+        spotify = next(p for p in presets if p["key"] == "spotify")
+        self.assertEqual(["music"], spotify["installed"])
+        self.assertEqual("https://open.spotify.com/", spotify["url"])
+        self.assertIn("hu", spotify["tagline"])
+        self.assertEqual([], next(p for p in presets if p["key"] == "discord")["installed"])
+
     def test_custom_css_command_sets_switches_and_removes(self):
         self.assertEqual(0, self.run_cli("new", "messenger", "--no-launch")[0])
         library = self.root / "am" / "library"

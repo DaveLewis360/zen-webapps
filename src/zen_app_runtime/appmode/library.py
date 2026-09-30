@@ -55,7 +55,7 @@ class Library:
         try:
             raw = path.read_text(encoding="utf-8")
         except FileNotFoundError as error:
-            raise AppModeError(f"no app named {app_id!r}; create it with `zen-app new`") from error
+            raise AppModeError(f"no app named {app_id!r}; create it with `zen-app new`", code="notFound") from error
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as error:
@@ -75,7 +75,8 @@ class Library:
     def create(self, definition: AppDefinition) -> Path:
         if self.exists(definition.id):
             raise AppModeError(
-                f"an app named {definition.id!r} already exists; pick another --id or remove it first"
+                f"an app named {definition.id!r} already exists; pick another --id or remove it first",
+                code="exists",
             )
         return self.save(definition)
 

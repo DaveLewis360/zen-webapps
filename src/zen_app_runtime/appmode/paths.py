@@ -82,3 +82,7 @@ class AppModePaths:
     def custom_css_path(self, app_id: str) -> Path:
         """The user's own CSS for an app, next to its definition."""
         return self.library / f"{app_id}.css"
+
+    def stored_icon_path(self, app_id: str, extension: str) -> Path:
+        """An icon the user picked for an app (png or svg), next to its definition."""
+        return self.library / f"{app_id}.{extension}"
