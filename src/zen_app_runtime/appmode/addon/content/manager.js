@@ -370,8 +370,13 @@ function renderShell(root) {
 /* ------------------------------------------------------------ wizard */
 
 function openWizard() {
-  // The new-app wizard (manager-wizard.js) replaces this when it is loaded.
-  window.ZenAppWizard?.open();
+  closeMenu();
+  window.ZenAppWizard?.open({ onClose: () => loadApps(), errorText });
+}
+
+/** Whether the list is on screen (not behind the wizard or in the background). */
+function listShown() {
+  return document.visibilityState === "visible" && !document.getElementById("app").hidden;
 }
 
 /* ------------------------------------------------------------- boot */
@@ -388,14 +393,14 @@ function boot() {
   const schedule = () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
-      if (document.visibilityState === "visible" && document.hasFocus() && !document.querySelector("dialog[open]")) {
+      if (listShown() && document.hasFocus() && !document.querySelector("dialog[open]")) {
         await loadApps();
       }
       schedule();
     }, REFRESH_MS);
   };
   schedule();
-  window.addEventListener("focus", () => loadApps());
+  window.addEventListener("focus", () => listShown() && loadApps());
   const unsubscribe = ZenApp.addListener(what => {
     if (what === "palette" || what === "settings") {
       applyTheme();
