@@ -79,9 +79,9 @@ def _ensure_shim(paths: AppModePaths) -> None:
     install_shim(paths)
 
 
-def prepare(definition: AppDefinition, paths: AppModePaths, library: Library, zen: ZenRuntime) -> Prepared:
+def _resolve_app_icon(definition: AppDefinition, paths: AppModePaths) -> IconChoice:
     preset = get_preset(definition.preset) if definition.preset else None
-    icon = resolve_icon(
+    return resolve_icon(
         paths,
         definition.id,
         definition.name,
@@ -89,10 +89,30 @@ def prepare(definition: AppDefinition, paths: AppModePaths, library: Library, ze
         icon_names=preset.icon_names if preset else (),
         custom=definition.icon,
     )
+
+
+def prepare(definition: AppDefinition, paths: AppModePaths, library: Library, zen: ZenRuntime) -> Prepared:
+    icon = _resolve_app_icon(definition, paths)
     _ensure_shim(paths)
     rendered = render_profile(definition, paths, zen, icon, library.path_for(definition.id))
     entry = install_desktop_entry(paths, definition, icon)
     return Prepared(definition, icon, rendered, entry)
+
+
+def _file_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def refresh_launcher(definition: AppDefinition, paths: AppModePaths) -> bool:
+    """Rewrite an app's launcher and icon, which may change while it runs (its profile may not).
+    True when the launcher changed."""
+    target = paths.desktop_path(definition.id)
+    before = _file_bytes(target)
+    install_desktop_entry(paths, definition, _resolve_app_icon(definition, paths))
+    return _file_bytes(target) != before
 
 
 def _context(paths: AppModePaths | None) -> tuple[AppModePaths, Library]:
@@ -336,9 +356,11 @@ def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None
     for identifier in ids:
         definition = library.load(identifier)
         if running_pid(paths.profile_dir(identifier)) is not None:
-            results.append({"id": identifier, "skipped": "running", "changed": []})
+            # Gecko owns a running profile; its launcher can still follow.
+            launcher = refresh_launcher(definition, paths)
+            results.append({"id": identifier, "skipped": "running", "changed": ["launcher"] if launcher else []})
             if not as_json:
-                out.write(f"{identifier}: running — refresh skipped (close it first)\n")
+                out.write(f"{identifier}: running — {_running_note(launcher)}\n")
             continue
         prepared = prepare(definition, paths, library, zen)
         results.append({"id": identifier, "skipped": None, "changed": list(prepared.render.changed)})
@@ -350,14 +372,22 @@ def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None
     return 0
 
 
+def _running_note(launcher_changed: bool) -> str:
+    launcher = "launcher updated" if launcher_changed else "launcher up to date"
+    return f"{launcher}; the profile is refreshed when it next starts (close it first)"
+
+
 def _refresh_manager(paths: AppModePaths, zen: ZenRuntime, *, as_json: bool, out: TextIO) -> dict:
     """Web Apps is refreshed with the apps; it has no library definition."""
-    from .manager import MANAGER_ID, manager_running, prepare_manager
+    from .manager import MANAGER_ID, install_manager_entry, manager_running, prepare_manager
 
     if manager_running(paths) is not None:
+        before = _file_bytes(paths.manager_desktop_path())
+        install_manager_entry(paths)
+        launcher = _file_bytes(paths.manager_desktop_path()) != before
         if not as_json:
-            out.write(f"{MANAGER_ID}: running — refresh skipped (close it first)\n")
-        return {"id": MANAGER_ID, "skipped": "running", "changed": [], "manager": True}
+            out.write(f"{MANAGER_ID}: running — {_running_note(launcher)}\n")
+        return {"id": MANAGER_ID, "skipped": "running", "changed": ["launcher"] if launcher else [], "manager": True}
     prepared = prepare_manager(paths, zen)
     if not as_json:
         out.write(f"{MANAGER_ID}: {', '.join(prepared.render.changed) or 'up to date'}\n")

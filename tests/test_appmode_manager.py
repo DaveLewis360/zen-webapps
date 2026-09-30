@@ -1,5 +1,6 @@
-"""Webappok, the app manager: its profile, launcher, icon and `zen-app studio`."""
+"""Web Apps, the app manager: its profile, launcher, icon and `zen-app studio`."""
 
+import io
 import json
 import os
 from pathlib import Path
@@ -9,7 +10,9 @@ from unittest import mock
 import xml.dom.minidom
 
 from zen_app_runtime.appmode import commands, icons, manager, render
+from zen_app_runtime.appmode.definition import definition_from_preset
 from zen_app_runtime.appmode.paths import AppModePaths
+from zen_app_runtime.appmode.presets import PRESETS
 from zen_app_runtime.appmode.zen import ZenRuntime
 
 
@@ -112,6 +115,29 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual("zen-apps", result["apps"][0]["id"])
         self.assertTrue(result["apps"][0]["manager"])
         self.assertTrue(self.paths.manager_desktop_path().is_file())
+
+    def test_refresh_rewrites_the_launchers_of_running_apps_but_not_their_profiles(self):
+        library = commands.Library(self.paths.library)
+        library.create(definition_from_preset(PRESETS["discord"]))
+        commands.cmd_refresh(None, as_json=True, out=io.StringIO(), paths=self.paths, zen=self.zen)
+        # Launchers from an older version (say, with translations), then both start running.
+        stale = "[Desktop Entry]\nName=Old\nName[hu]=Régi\n"
+        for path in (self.paths.manager_desktop_path(), self.paths.desktop_path("discord")):
+            path.write_text(stale)
+        profile_config = self.paths.profile_dir("discord") / "zen-app" / "app.json"
+        profile_config.write_text("{}")
+        out = io.StringIO()
+        with mock.patch.object(commands, "running_pid", return_value=4242), mock.patch.object(manager, "manager_running", return_value=4343):
+            commands.cmd_refresh(None, as_json=True, out=out, paths=self.paths, zen=self.zen)
+        result = json.loads(out.getvalue())["apps"]
+        self.assertEqual(
+            [("zen-apps", "running", ["launcher"]), ("discord", "running", ["launcher"])],
+            [(entry["id"], entry["skipped"], entry["changed"]) for entry in result],
+        )
+        self.assertIn("Name=Web Apps\n", self.paths.manager_desktop_path().read_text())
+        self.assertIn("Name=Discord\n", self.paths.desktop_path("discord").read_text())
+        self.assertNotIn("[hu]", self.paths.desktop_path("discord").read_text())
+        self.assertEqual("{}", profile_config.read_text())  # Gecko owns the running profile
 
 
 if __name__ == "__main__":
