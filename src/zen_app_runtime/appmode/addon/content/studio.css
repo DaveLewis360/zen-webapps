@@ -1114,6 +1114,212 @@ p {
   color: var(--zenapp-error);
 }
 
+/* ------------------------------------------------------- extensions */
+
+.ext-status {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  justify-items: start;
+}
+
+.ext-status .wavy {
+  width: min(320px, 100%);
+}
+
+.ext-status .css-actions {
+  margin-top: 0;
+}
+
+.ext-lead img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.row > .text .body.bad {
+  color: var(--zenapp-error);
+}
+
+.ext-desc {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zenapp-on-surface-variant);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.ext-installed .row .css-actions {
+  margin-top: 6px;
+}
+
+.ext-empty {
+  padding: 4px 20px 14px 80px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ext-add {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--zenapp-outline-variant) 55%, transparent);
+}
+
+.ext-add .css-actions,
+.ext-add .css-hint {
+  margin-top: 0;
+}
+
+.ext-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: var(--shape-full);
+  background: var(--card-highest);
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+  color: var(--zenapp-on-surface-variant);
+  cursor: text;
+  transition: box-shadow var(--effects-d) var(--effects);
+}
+
+.ext-search:focus-within {
+  box-shadow: inset 0 0 0 2px var(--zenapp-primary);
+}
+
+.ext-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--zenapp-on-surface);
+  font: inherit;
+  font-size: 15px;
+  user-select: text;
+}
+
+.ext-search input::placeholder {
+  color: var(--zenapp-on-surface-variant);
+  opacity: 0.75;
+}
+
+.ext-results {
+  display: grid;
+  gap: 2px;
+}
+
+.ext-results:empty {
+  display: none;
+}
+
+.ext-message {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zenapp-on-surface-variant);
+}
+
+.ext-message.bad {
+  color: var(--zenapp-error);
+}
+
+.ext-result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 8px;
+  border-radius: var(--shape-l);
+  transition: background-color var(--effects-d) var(--effects);
+}
+
+.ext-result:hover {
+  background: color-mix(in srgb, var(--zenapp-on-surface) 5%, transparent);
+}
+
+.ext-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--shape-m);
+  object-fit: contain;
+}
+
+.ext-icon.placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--card-highest);
+  color: var(--zenapp-on-surface-variant);
+}
+
+.ext-result > .text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ext-result .name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ext-result .name > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-result .summary {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zenapp-on-surface-variant);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.ext-result .meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--zenapp-on-surface-variant);
+  opacity: 0.8;
+}
+
+.ext-result .btn {
+  flex: none;
+  height: 36px;
+  padding: 0 16px 0 12px;
+  font-size: 13px;
+}
+
+.ext-result .btn .icon {
+  font-size: 18px;
+}
+
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--shape-full);
+  background: var(--zenapp-tertiary-container);
+  color: var(--zenapp-on-tertiary-container);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 /* ------------------------------------------------------------- keys */
 
 .keys-grid {

@@ -40,6 +40,8 @@ class Preset:
     # Sites that moved: styles written for the old domain (Zen Internet
     # entries, uploaded userstyles) also apply under these URL prefixes.
     style_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Site compatibility fixes (keys of render.COMPAT_FIXES).
+    compat: tuple[str, ...] = ()
 
 
 PRESETS: dict[str, Preset] = {
@@ -134,6 +136,8 @@ PRESETS: dict[str, Preset] = {
                     "https://facebook.com/messages",
                 ),
             },
+            # Encrypted 1:1 calls need Chrome's createEncodedStreams().
+            compat=("encoded-streams",),
         ),
         Preset(
             key="youtube-music",

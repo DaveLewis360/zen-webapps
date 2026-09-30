@@ -62,6 +62,10 @@ class AppSettings:
     disabled_features: tuple[str, ...] = ()
     # The user's own CSS (<library>/<id>.css) applies while this is on.
     custom_css: bool = True
+    # uBlock Origin (from addons.mozilla.org) filters ads in this app.
+    adblock: bool = True
+    # Site compatibility fixes of the preset (e.g. Messenger's encrypted calls).
+    webcompat: bool = True
 
 
 _SETTINGS_FIELDS = {
@@ -80,6 +84,8 @@ _SETTINGS_FIELDS = {
     "zenInternet": "zen_internet",
     "disabledFeatures": "disabled_features",
     "customCss": "custom_css",
+    "adblock": "adblock",
+    "webcompat": "webcompat",
 }
 
 

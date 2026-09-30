@@ -112,7 +112,7 @@ function snackbar(text, action) {
   snackTimer = setTimeout(() => bar.classList.remove("shown"), action ? 6000 : 2400);
 }
 
-async function setSettings(patch, { restartHint = false } = {}) {
+async function setSettings(patch, { restartHint = false, reloadHint = false } = {}) {
   try {
     await ZenApp.updateSettings(patch);
   } catch (error) {
@@ -122,10 +122,13 @@ async function setSettings(patch, { restartHint = false } = {}) {
   }
   refresh();
   if (MODE === "settings") {
-    snackbar(
-      restartHint ? t("settings.restartNeeded") : t("settings.saved"),
-      restartHint ? { label: t("settings.restart"), run: () => ZenApp.restart() } : null
-    );
+    if (restartHint) {
+      snackbar(t("settings.restartNeeded"), { label: t("settings.restart"), run: () => ZenApp.restart() });
+    } else if (reloadHint) {
+      snackbar(t("settings.reloadNeeded"), { label: t("settings.reload"), run: () => ZenApp.reloadApp() });
+    } else {
+      snackbar(t("settings.saved"));
+    }
   }
 }
 
@@ -165,6 +168,34 @@ function toggle(label, current, onChange) {
   );
   bind(() => button.setAttribute("aria-checked", String(!!current())));
   return button;
+}
+
+/** A switch inside a list that is rebuilt on change (no bind()). */
+function listToggle(label, checked, onChange) {
+  const button = h(
+    "button",
+    { class: "switch", type: "button", role: "switch", "aria-label": label, "aria-checked": String(!!checked) },
+    h("span", { class: "handle" }, icon("check"))
+  );
+  button.addEventListener("click", () => {
+    const next = button.getAttribute("aria-checked") !== "true";
+    button.setAttribute("aria-checked", String(next));
+    onChange(next);
+  });
+  return button;
+}
+
+/** Indeterminate wavy progress (M3 Expressive). */
+function wavy() {
+  const progress = h("div", { class: "wavy", hidden: true });
+  const wave = svg("svg", { viewBox: "0 0 440 12", preserveAspectRatio: "none" });
+  let d = "M2 6";
+  for (let x = 2; x < 438; x += 20) {
+    d += ` Q ${x + 5} 0 ${x + 10} 6 T ${x + 20} 6`;
+  }
+  wave.append(svg("path", { d }));
+  progress.append(wave);
+  return progress;
 }
 
 function slider({ min, max, label, current, onPreview, onCommit }) {
@@ -588,14 +619,7 @@ function stylesPanel(detailed) {
 
 function widevineExtra() {
   const status = h("span", { class: "status" });
-  const progress = h("div", { class: "wavy", hidden: true });
-  const wave = svg("svg", { viewBox: "0 0 440 12", preserveAspectRatio: "none" });
-  let d = "M2 6";
-  for (let x = 2; x < 438; x += 20) {
-    d += ` Q ${x + 5} 0 ${x + 10} 6 T ${x + 20} 6`;
-  }
-  wave.append(svg("path", { d }));
-  progress.append(wave);
+  const progress = wavy();
   const install = h("button", { class: "btn tonal", type: "button", onclick: () => ZenApp.ensureWidevine({ force: true }) }, icon("download"), t("permissions.drm.install"));
   const box = h("div", { style: "display:grid;gap:8px;margin-top:6px;justify-items:start" }, status, progress, install);
   bind(() => {
@@ -628,6 +652,19 @@ function permissionsSection() {
       extra: key === "drm" ? widevineExtra() : null,
     });
   };
+  // Site compatibility fixes of the preset (e.g. Messenger's encrypted calls).
+  const compatRows = (model.compat || []).map(fix => {
+    const title = t(`compat.${fix.id}`);
+    return row({
+      iconName: "phone_in_talk",
+      title,
+      text: fix.available ? t(`compat.${fix.id}.desc`) : t("compat.unavailable"),
+      on: () => fix.available && model.settings.webcompat !== false,
+      trailing: fix.available
+        ? toggle(title, () => model.settings.webcompat !== false, value => setSettings({ webcompat: value }, { reloadHint: true }))
+        : null,
+    });
+  });
   return h(
     "div",
     {},
@@ -637,8 +674,12 @@ function permissionsSection() {
       setting("notifications", "notifications"),
       setting("media", "mic"),
       setting("autoplay", "play_circle"),
-      setting("drm", "verified_user")
+      setting("drm", "verified_user"),
+      compatRows
     ),
+    // Settings has a tab of its own for these.
+    MODE === "settings" ? null : adblockPanel(),
+    MODE === "settings" ? null : extensionsPanel(),
     h(
       "div",
       { class: "panel" },
@@ -646,6 +687,339 @@ function permissionsSection() {
       row({ iconName: "screen_share", title: t("permissions.screen"), text: t("permissions.screen.desc") })
     )
   );
+}
+
+/* --------------------------------------------------------- extensions */
+
+async function runExtension(action, doneText) {
+  try {
+    const result = await action();
+    if (result && doneText) {
+      snackbar(doneText(result));
+    }
+  } catch (error) {
+    console.error(error);
+    snackbar(t(`ext.error.${error?.code || "unknown"}`));
+  } finally {
+    refresh();
+  }
+}
+
+function percent(progress) {
+  return Number.isFinite(progress) ? Math.round(progress * 100) : null;
+}
+
+/** uBlock Origin behind the "adblock" setting. */
+function adblockPanel() {
+  const status = h("span", { class: "status" });
+  const progress = wavy();
+  const retry = h(
+    "button",
+    { class: "btn tonal", type: "button", onclick: () => runExtension(() => ZenApp.retryAdblock()) },
+    icon("refresh"),
+    t("adblock.retry")
+  );
+  const options = h(
+    "button",
+    { class: "btn text", type: "button", onclick: () => ZenApp.openExtensionOptions(model.adblock.id) },
+    icon("tune"),
+    t("adblock.options")
+  );
+  const actions = h("div", { class: "css-actions" }, retry, options);
+  const box = h("div", { class: "ext-status" }, status, progress, actions);
+  const element = row({
+    iconName: "ad_off",
+    title: t("adblock.title"),
+    text: t("adblock.desc"),
+    on: () => model.settings.adblock !== false && model.adblock?.state === "active",
+    trailing: toggle(t("adblock.title"), () => model.settings.adblock !== false, value => setSettings({ adblock: value })),
+    extra: box,
+  });
+  element.classList.add("with-control");
+  bind(() => {
+    const adblock = model.adblock || { state: "unknown" };
+    const wanted = model.settings.adblock !== false;
+    const state = adblock.state;
+    const done = percent(adblock.progress);
+    status.className = "status" + (state === "failed" || state === "blocked" ? " bad" : "");
+    status.textContent =
+      state === "active"
+        ? `✓ ${t("adblock.active", { name: adblock.name, version: adblock.version || "" }).trim()}`
+        : state === "installing"
+          ? done === null
+            ? t("adblock.installing")
+            : t("adblock.installingPercent", { percent: done })
+          : state === "failed"
+            ? `${t(`ext.error.${adblock.error || "unknown"}`)} ${t("adblock.retryLater")}`
+            : state === "blocked"
+              ? t("adblock.blocked")
+              : state === "missing"
+                ? t("adblock.missing")
+                : wanted
+                  ? t("adblock.starting")
+                  : t("adblock.off");
+    progress.hidden = state !== "installing";
+    retry.hidden = !wanted || !(state === "failed" || state === "missing");
+    options.hidden = state !== "active";
+    actions.hidden = retry.hidden && options.hidden;
+    box.hidden = !wanted && state !== "installing";
+  });
+  return h("div", { class: "panel" }, element);
+}
+
+/** The app's own extensions: the installed ones, and adding more from AMO or a file. */
+function extensionsPanel() {
+  const installed = h("div", { class: "ext-installed" });
+  const input = h("input", {
+    type: "text",
+    placeholder: t("ext.search.placeholder"),
+    "aria-label": t("ext.search"),
+    spellcheck: "false",
+    autocomplete: "off",
+  });
+  const results = h("div", { class: "ext-results", "aria-live": "polite" });
+  const fromFile = h(
+    "button",
+    {
+      class: "btn outlined",
+      type: "button",
+      onclick: () => runExtension(() => ZenApp.pickExtensionFile(), result => t("ext.added", { name: result.name })),
+    },
+    icon("upload_file"),
+    t("ext.file")
+  );
+  const manage =
+    MODE === "settings"
+      ? h(
+          "button",
+          {
+            class: "btn text",
+            type: "button",
+            onclick: () => {
+              ZenApp.openAddons();
+              window.close();
+            },
+          },
+          icon("open_in_new"),
+          t("ext.manage")
+        )
+      : null;
+  const add = h(
+    "div",
+    { class: "ext-add" },
+    h("label", { class: "ext-search" }, icon("search"), input),
+    results,
+    h("div", { class: "css-actions" }, fromFile, manage),
+    h("div", { class: "css-hint" }, t("ext.hint"))
+  );
+  const head = h(
+    "div",
+    { class: "row" },
+    h("div", { class: "lead" }, icon("extension")),
+    h("div", { class: "text" }, h("div", { class: "title" }, t("ext.title")), h("div", { class: "body" }, t("ext.desc")))
+  );
+
+  const installedIds = () => {
+    const ids = new Set((model.extensions || []).map(extension => extension.id));
+    if (model.adblock?.state === "active") {
+      ids.add(model.adblock.id);
+    }
+    return ids;
+  };
+
+  /* Installed extensions. */
+  const remove = extension =>
+    runExtension(async () => {
+      const removed = await ZenApp.removeExtension(extension.id);
+      snackbar(t("ext.removed", { name: removed.name }), {
+        label: t("css.undo"),
+        run: () => runExtension(() => ZenApp.undoRemoveExtension(removed.id)),
+      });
+      return null;
+    });
+  const installedRow = extension => {
+    const notes = [
+      extension.version ? `v${extension.version}` : null,
+      extension.signed ? null : t("ext.unsigned"),
+      extension.temporary ? t("ext.temporary") : null,
+      extension.appDisabled ? t(extension.blocked ? "ext.blocked" : "ext.incompatible") : null,
+    ].filter(Boolean);
+    const buttons = [
+      extension.options && extension.active
+        ? h("button", { class: "btn text", type: "button", onclick: () => ZenApp.openExtensionOptions(extension.id) }, icon("tune"), t("ext.options"))
+        : null,
+      extension.canRemove
+        ? h("button", { class: "btn text danger-text", type: "button", onclick: () => remove(extension) }, icon("delete"), t("ext.remove"))
+        : null,
+    ].filter(Boolean);
+    const onOff = listToggle(extension.name, extension.enabled, value =>
+      runExtension(() => ZenApp.setExtensionEnabled(extension.id, value))
+    );
+    onOff.disabled = !extension.canToggle;
+    return h(
+      "div",
+      { class: "row with-control" + (extension.enabled && extension.active ? " on" : "") },
+      h("div", { class: "lead ext-lead" }, extension.icon ? h("img", { src: extension.icon, alt: "" }) : icon("extension")),
+      h(
+        "div",
+        { class: "text" },
+        h("div", { class: "title" }, extension.name),
+        notes.length ? h("div", { class: "body" + (extension.appDisabled ? " bad" : "") }, notes.join(" · ")) : null,
+        extension.description ? h("div", { class: "ext-desc" }, extension.description) : null,
+        buttons.length ? h("div", { class: "css-actions" }, buttons) : null
+      ),
+      onOff
+    );
+  };
+  let installedKey = "";
+  const renderInstalled = () => {
+    const list = model.extensions || [];
+    const fileJob = model.extensionJobs?.file || null;
+    const key = JSON.stringify([list, fileJob, model.extensionsReady]);
+    if (key === installedKey) {
+      return;
+    }
+    installedKey = key;
+    const rows = list.map(installedRow);
+    if (fileJob) {
+      const progress = wavy();
+      progress.hidden = false;
+      rows.push(
+        h(
+          "div",
+          { class: "row" },
+          h("div", { class: "lead" }, icon("upload_file")),
+          h("div", { class: "text" }, h("div", { class: "title" }, t("ext.fileInstalling", { name: fileJob.name || "" })), progress)
+        )
+      );
+    }
+    if (!rows.length) {
+      rows.push(h("div", { class: "ext-empty body" }, t(model.extensionsReady ? "ext.none" : "ext.loading")));
+    }
+    installed.replaceChildren(...rows);
+  };
+
+  /* Search on addons.mozilla.org (or an AMO link). */
+  const compact = new Intl.NumberFormat(model.locale, { notation: "compact", maximumFractionDigits: 1 });
+  let query = "";
+  let found = [];
+  let searching = false;
+  let searchError = null;
+  let generation = 0;
+  let timer = 0;
+  const search = async text => {
+    const mine = ++generation;
+    query = text.trim();
+    if (query.length < 2) {
+      found = [];
+      searching = false;
+      searchError = null;
+      renderResults();
+      return;
+    }
+    searching = true;
+    searchError = null;
+    renderResults();
+    let list = [];
+    let failure = null;
+    try {
+      list = await ZenApp.searchExtensions(query);
+    } catch (error) {
+      failure = error?.code || "unknown";
+    }
+    if (mine !== generation) {
+      return;
+    }
+    found = list;
+    searchError = failure;
+    searching = false;
+    renderResults();
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => search(input.value), 350);
+  });
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      clearTimeout(timer);
+      search(input.value);
+    } else if (event.key === "Escape" && input.value) {
+      // Clear the field instead of closing the settings dialog.
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = "";
+      clearTimeout(timer);
+      search("");
+    }
+  });
+  const resultRow = (result, ids, jobs) => {
+    const job = jobs[result.guid];
+    const has = ids.has(result.guid);
+    const label = has
+      ? t("ext.installed")
+      : job
+        ? percent(job.progress) === null
+          ? t("ext.installing")
+          : `${percent(job.progress)}%`
+        : result.compatible
+          ? t("ext.add")
+          : t("ext.incompatible");
+    const button = h(
+      "button",
+      {
+        class: `btn ${has || !result.compatible ? "text" : "tonal"}`,
+        type: "button",
+        disabled: has || !!job || !result.compatible,
+        onclick: () => runExtension(() => ZenApp.installExtension(result.guid), done => t("ext.added", { name: done.name })),
+      },
+      has ? icon("check") : job ? null : result.compatible ? icon("add") : null,
+      label
+    );
+    const meta = [result.users !== null ? t("ext.users", { n: compact.format(result.users) }) : null, result.version ? `v${result.version}` : null]
+      .filter(Boolean)
+      .join(" · ");
+    return h(
+      "div",
+      { class: "ext-result" },
+      result.icon
+        ? h("img", { class: "ext-icon", src: result.icon, alt: "", referrerpolicy: "no-referrer" })
+        : h("span", { class: "ext-icon placeholder" }, icon("extension")),
+      h(
+        "div",
+        { class: "text" },
+        h("div", { class: "name" }, h("span", {}, result.name), result.recommended ? h("span", { class: "badge" }, t("ext.recommended")) : null),
+        result.summary ? h("div", { class: "summary" }, result.summary) : null,
+        meta ? h("div", { class: "meta" }, meta) : null
+      ),
+      button
+    );
+  };
+  let resultsKey = "";
+  const renderResults = () => {
+    const ids = installedIds();
+    const jobs = model.extensionJobs || {};
+    const key = JSON.stringify([query, searching, searchError, found.map(result => result.guid), [...ids], jobs]);
+    if (key === resultsKey) {
+      return;
+    }
+    resultsKey = key;
+    const content = [];
+    if (searching && !found.length) {
+      content.push(h("div", { class: "ext-message" }, t("ext.searching")));
+    } else if (searchError) {
+      content.push(h("div", { class: "ext-message bad" }, t(`ext.error.${searchError}`)));
+    } else if (query.length >= 2 && !found.length) {
+      content.push(h("div", { class: "ext-message" }, t("ext.noResults")));
+    }
+    content.push(...found.map(result => resultRow(result, ids, jobs)));
+    results.replaceChildren(...content);
+  };
+
+  bind(() => {
+    renderInstalled();
+    renderResults();
+  });
+  return h("div", { class: "panel extensions" }, head, installed, add);
 }
 
 function keysSection() {
@@ -732,12 +1106,6 @@ function advancedSection() {
         title: t("settings.onboarding"),
         text: t("settings.onboarding.desc"),
         trailing: h("button", { class: "btn tonal", type: "button", onclick: () => ZenApp.restartOnboarding(window) }, icon("arrow_forward")),
-      }),
-      row({
-        iconName: "extension",
-        title: t("settings.addons"),
-        text: t("settings.addons.desc"),
-        trailing: h("button", { class: "btn outlined", type: "button", onclick: () => { ZenApp.openAddons(); window.close(); } }, icon("open_in_new")),
       }),
       row({
         iconName: "delete_sweep",
@@ -897,6 +1265,7 @@ function renderSettings(root) {
     ["appearance", t("settings.appearance"), appearanceSection],
     ["styles", t("settings.styles"), () => h("div", {}, customCssPanel(), stylesPanel(true))],
     ["permissions", t("settings.permissions"), permissionsSection],
+    ["extensions", t("settings.extensions"), () => h("div", {}, adblockPanel(), extensionsPanel())],
     ["keys", t("settings.keys"), keysSection],
     ["advanced", t("settings.advanced"), advancedSection],
   ];

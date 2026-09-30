@@ -21,9 +21,22 @@ import {
   importedFrom,
   stripImportHeader,
 } from "resource://zenapp/modules/UserCss.sys.mjs";
+import {
+  ADBLOCK,
+  ExtensionError,
+  amoLookup,
+  amoReference,
+  amoSearch,
+  describeAddon,
+  installFromAmo,
+  installFromFile,
+  isListed,
+  isPendingUninstall,
+} from "resource://zenapp/modules/Extensions.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
   GMPInstallManager: "resource://gre/modules/GMPInstallManager.sys.mjs",
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
@@ -36,6 +49,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const IMPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** How often the wallpaper colour scheme is checked for changes. */
 const SCHEME_POLL_MS = 2000;
+/** sharedData key of the site compatibility fixes (see ZenAppCompatChild). */
+const COMPAT_KEY = "zenapp:compat";
+/** Install progress reaches the studio at most this often. */
+const PROGRESS_EMIT_MS = 150;
 
 function sha256Hex(text) {
   const hasher = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
@@ -90,6 +107,19 @@ class ZenAppRuntime {
   _pendingAction = null;
   _widevinePromise = null;
   _commandLineFactory = null;
+  // Extensions: uBlock Origin state, the listed add-ons, running installs.
+  adblock = { state: "unknown" };
+  extensions = [];
+  extensionJobs = {};
+  _addonsReady = false;
+  _addonListener = null;
+  _adblockRun = null;
+  _adblockAgain = false;
+  _extensionsTimer = null;
+  _progressEmitted = 0;
+  // Site compatibility fixes: id → whether this Zen ships the script.
+  _compatAvailable = {};
+  _compatActor = false;
 
   get id() {
     return this.store.config.appId;
@@ -120,6 +150,7 @@ class ZenAppRuntime {
     this.styles = catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
     this.#registerCssActor();
     await this.#reloadCustomCss();
+    await this.#setupCompat();
     this.#registerCommandLine();
     await this.refreshPalette();
     this.#registerStyles();
@@ -132,6 +163,8 @@ class ZenAppRuntime {
     if (this.settings.drm && this.widevine.state !== "installed") {
       this.ensureWidevine().catch(() => {});
     }
+    // The AddonManager is still starting while this add-on starts.
+    this.#watchAddons().catch(error => console.error("zen-app: extensions", error));
     await this.#writeStatus();
   }
 
@@ -147,20 +180,35 @@ class ZenAppRuntime {
       lazy.clearInterval(this._schemeTimer);
       this._schemeTimer = null;
     }
+    if (this._addonListener) {
+      try {
+        lazy.AddonManager.removeAddonListener(this._addonListener);
+      } catch {
+        // ignore
+      }
+      this._addonListener = null;
+    }
+    lazy.clearTimeout(this._extensionsTimer);
     this.#unregisterStyles();
     try {
       Services.ppmm.sharedData.delete(CUSTOM_CSS_KEY);
+      Services.ppmm.sharedData.delete(COMPAT_KEY);
       Services.ppmm.sharedData.flush();
     } catch {
       // ignore
     }
-    if (this._cssActor) {
-      try {
-        ChromeUtils.unregisterWindowActor("ZenAppCss");
-      } catch {
-        // ignore
+    for (const [flag, name] of [
+      ["_cssActor", "ZenAppCss"],
+      ["_compatActor", "ZenAppCompat"],
+    ]) {
+      if (this[flag]) {
+        try {
+          ChromeUtils.unregisterWindowActor(name);
+        } catch {
+          // ignore
+        }
+        this[flag] = false;
       }
-      this._cssActor = false;
     }
     try {
       Services.catMan.deleteCategoryEntry("command-line-handler", COMMAND_LINE_CATEGORY_ENTRY, false);
@@ -479,6 +527,12 @@ class ZenAppRuntime {
     }
     if (settings.drm && !before.drm && this.widevine.state !== "installed") {
       this.ensureWidevine().catch(() => {});
+    }
+    if (before.adblock !== settings.adblock) {
+      this.syncAdblock();
+    }
+    if (before.webcompat !== settings.webcompat) {
+      this.#publishCompat();
     }
     this.#emit("settings");
     return settings;
@@ -1066,6 +1120,356 @@ class ZenAppRuntime {
     return this._widevinePromise;
   }
 
+  /* ------------------------------------------------------ extensions */
+
+  /** Follow this profile's add-ons once the AddonManager is up. */
+  async #watchAddons() {
+    await lazy.AddonManager.readyPromise;
+    if (!this.started || this._addonListener) {
+      return;
+    }
+    const refresh = () => this.#scheduleExtensionsRefresh();
+    // uBlock Origin changed elsewhere (about:addons, a file install): the setting follows.
+    const follow = (addon, on) => {
+      if (addon?.id === ADBLOCK.id && !this._adblockRun && (this.settings.adblock !== false) !== on) {
+        this.updateSettings({ adblock: on }).catch(error => console.error("zen-app: ad blocker", error));
+      }
+    };
+    this._addonListener = {
+      onEnabled: addon => {
+        follow(addon, true);
+        refresh();
+      },
+      onDisabled: addon => {
+        if (addon?.userDisabled) {
+          follow(addon, false);
+        }
+        refresh();
+      },
+      onUninstalling: addon => {
+        follow(addon, false);
+        refresh();
+      },
+      onUninstalled: addon => {
+        follow(addon, false);
+        refresh();
+      },
+      onInstalled: addon => {
+        follow(addon, !addon?.userDisabled);
+        refresh();
+      },
+      onOperationCancelled: addon => {
+        follow(addon, !addon?.userDisabled && !isPendingUninstall(addon));
+        refresh();
+      },
+      onPropertyChanged: refresh,
+    };
+    lazy.AddonManager.addAddonListener(this._addonListener);
+    this._addonsReady = true;
+    await this.#refreshExtensions();
+    await this.syncAdblock();
+  }
+
+  #scheduleExtensionsRefresh() {
+    lazy.clearTimeout(this._extensionsTimer);
+    this._extensionsTimer = lazy.setTimeout(() => {
+      this.#refreshExtensions().catch(error => console.error("zen-app: extensions", error));
+    }, 60);
+  }
+
+  async #refreshExtensions() {
+    if (!this._addonsReady) {
+      return;
+    }
+    const addons = await lazy.AddonManager.getAddonsByTypes(["extension"]);
+    this.extensions = addons
+      .filter(addon => isListed(addon) && addon.id !== ADBLOCK.id && !isPendingUninstall(addon))
+      .map(describeAddon)
+      .sort((a, b) => a.name.localeCompare(b.name, getLocale()));
+    if (!this._adblockRun) {
+      this.adblock = this.#adblockStateOf(addons.find(addon => addon.id === ADBLOCK.id));
+    }
+    this.#emit("extensions");
+  }
+
+  /** The ad blocker as the studio shows it. */
+  #adblockStateOf(addon) {
+    if (!addon || isPendingUninstall(addon)) {
+      if (this.settings.adblock === false) {
+        return { state: "off" };
+      }
+      // A failed download stays visible until the next attempt.
+      return this.adblock.state === "failed" ? this.adblock : { state: "missing" };
+    }
+    const version = addon.version || "";
+    if (addon.userDisabled) {
+      return { state: "off", version, installed: true };
+    }
+    if (addon.appDisabled) {
+      return { state: "blocked", version, installed: true };
+    }
+    return { state: "active", version, installed: true };
+  }
+
+  #progress(update) {
+    update();
+    const now = Date.now();
+    if (now - this._progressEmitted >= PROGRESS_EMIT_MS) {
+      this._progressEmitted = now;
+      this.#emit("extensions");
+    }
+  }
+
+  /** Make uBlock Origin match the "adblock" setting: install, enable or disable it. */
+  syncAdblock() {
+    if (!this._addonsReady) {
+      return Promise.resolve(this.adblock);
+    }
+    if (this._adblockRun) {
+      this._adblockAgain = true;
+    } else {
+      this._adblockRun = (async () => {
+        do {
+          this._adblockAgain = false;
+          try {
+            await this.#applyAdblock();
+          } catch (error) {
+            console.error("zen-app: ad blocker", error);
+            this.adblock = { state: "failed", error: error?.code || "unknown" };
+          }
+        } while (this._adblockAgain);
+      })().finally(() => {
+        this._adblockRun = null;
+        this.#emit("extensions");
+        this.#writeStatus();
+      });
+    }
+    return this._adblockRun.then(() => this.adblock);
+  }
+
+  async #applyAdblock() {
+    let addon = await lazy.AddonManager.getAddonByID(ADBLOCK.id);
+    if (this.settings.adblock === false) {
+      if (addon && !addon.userDisabled && !isPendingUninstall(addon)) {
+        await addon.disable();
+      }
+      this.adblock = this.#adblockStateOf(addon);
+      return;
+    }
+    if (isPendingUninstall(addon)) {
+      addon.cancelUninstall();
+    }
+    if (!addon) {
+      this.adblock = { state: "installing", progress: null };
+      this.#emit("extensions");
+      const info = await amoLookup(ADBLOCK.slug, getLocale());
+      if (info.guid !== ADBLOCK.id) {
+        throw new ExtensionError("mismatch");
+      }
+      addon = await installFromAmo(info, {
+        onProgress: progress =>
+          this.#progress(() => {
+            this.adblock = { state: "installing", progress };
+          }),
+      });
+    }
+    if (addon.userDisabled) {
+      await addon.enable();
+    }
+    this.adblock = this.#adblockStateOf(addon);
+  }
+
+  setAdblock(enabled) {
+    return this.updateSettings({ adblock: !!enabled });
+  }
+
+  retryAdblock() {
+    return this.syncAdblock();
+  }
+
+  async #listedAddon(id) {
+    const addon = await lazy.AddonManager.getAddonByID(String(id));
+    if (!isListed(addon)) {
+      throw new ExtensionError("notFound");
+    }
+    return addon;
+  }
+
+  async setExtensionEnabled(id, enabled) {
+    if (id === ADBLOCK.id) {
+      return this.setAdblock(enabled);
+    }
+    const addon = await this.#listedAddon(id);
+    await (enabled ? addon.enable() : addon.disable());
+    await this.#refreshExtensions();
+    return describeAddon(addon);
+  }
+
+  /** Remove an extension; undoRemoveExtension() restores it until the app restarts. */
+  async removeExtension(id) {
+    const addon = await this.#listedAddon(id);
+    await addon.uninstall(true);
+    await this.#refreshExtensions();
+    return { id: addon.id, name: addon.name };
+  }
+
+  async undoRemoveExtension(id) {
+    const addon = await lazy.AddonManager.getAddonByID(String(id));
+    if (isPendingUninstall(addon)) {
+      addon.cancelUninstall();
+    }
+    await this.#refreshExtensions();
+  }
+
+  /** AMO extensions for a search text, or the one an AMO link points to. */
+  async searchExtensions(query) {
+    const text = String(query ?? "").trim().slice(0, 200);
+    if (!text) {
+      return [];
+    }
+    const reference = amoReference(text);
+    return reference ? [await amoLookup(reference, getLocale())] : amoSearch(text, getLocale());
+  }
+
+  /** Install an AMO extension (GUID or slug); the download data comes fresh from AMO. */
+  async installExtension(reference) {
+    const key = String(reference ?? "");
+    if (key === ADBLOCK.id || key === ADBLOCK.slug) {
+      await this.setAdblock(true);
+      await this.syncAdblock();
+      if (this.adblock.state === "failed") {
+        throw new ExtensionError(this.adblock.error || "unknown");
+      }
+      return { id: ADBLOCK.id, name: ADBLOCK.name };
+    }
+    if (!key || this.extensionJobs[key]) {
+      throw new ExtensionError("busy");
+    }
+    this.extensionJobs[key] = { state: "installing", progress: null };
+    this.#emit("extensions");
+    try {
+      const info = await amoLookup(key, getLocale());
+      const addon = await installFromAmo(info, {
+        onProgress: progress =>
+          this.#progress(() => {
+            if (this.extensionJobs[key]) {
+              this.extensionJobs[key] = { state: "installing", progress };
+            }
+          }),
+      });
+      return { id: addon.id, name: addon.name };
+    } finally {
+      delete this.extensionJobs[key];
+      await this.#refreshExtensions();
+    }
+  }
+
+  /** Native file picker for an .xpi; null when cancelled. */
+  async pickExtensionFile() {
+    const win = this.mainWindow?.win || Services.wm.getMostRecentWindow("navigator:browser");
+    const picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
+    picker.init(win.browsingContext, t("ext.picker.title"), Ci.nsIFilePicker.modeOpen);
+    picker.appendFilter(t("ext.picker.filter"), "*.xpi; *.zip");
+    picker.appendFilters(Ci.nsIFilePicker.filterAll);
+    const result = await new Promise(resolve => picker.open(resolve));
+    if (result !== Ci.nsIFilePicker.returnOK || !picker.file) {
+      return null;
+    }
+    return this.installExtensionFile(picker.file.path);
+  }
+
+  async installExtensionFile(path) {
+    if (this.extensionJobs.file) {
+      throw new ExtensionError("busy");
+    }
+    this.extensionJobs.file = { state: "installing", progress: null, name: PathUtils.filename(path) };
+    this.#emit("extensions");
+    try {
+      const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      file.initWithPath(path);
+      const addon = await installFromFile(file);
+      return { id: addon.id, name: addon.name, signed: describeAddon(addon).signed };
+    } finally {
+      delete this.extensionJobs.file;
+      await this.#refreshExtensions();
+    }
+  }
+
+  /** An extension's own settings page, in a window of its own. */
+  async openExtensionOptions(id) {
+    const addon = await lazy.AddonManager.getAddonByID(String(id));
+    const url = addon?.optionsURL;
+    const win = this.mainWindow?.win;
+    if (!url || !win) {
+      return false;
+    }
+    win.openTrustedLinkIn(url, "window");
+    return true;
+  }
+
+  /* ------------------------------------- site compatibility fixes */
+
+  get #compatFixes() {
+    return Object.entries(this.store.config.compat || {});
+  }
+
+  /** Register the page scripts the preset asks for (see ZenAppCompatChild). */
+  async #setupCompat() {
+    const fixes = this.#compatFixes;
+    if (!fixes.length) {
+      return;
+    }
+    for (const [id, fix] of fixes) {
+      try {
+        await ChromeUtils.compileScript(fix.script, { hasReturnValue: false });
+        this._compatAvailable[id] = true;
+      } catch (error) {
+        this._compatAvailable[id] = false;
+        console.warn(`zen-app: this Zen has no compatibility fix ${id}`, error);
+      }
+    }
+    const hosts = [...new Set(fixes.flatMap(([, fix]) => fix.hosts || []))].filter(host => /^[a-z0-9.-]+$/.test(host));
+    if (hosts.length) {
+      try {
+        ChromeUtils.registerWindowActor("ZenAppCompat", {
+          child: {
+            esModuleURI: "resource://zenapp/actors/ZenAppCompatChild.sys.mjs",
+            events: { DOMDocElementInserted: {} },
+          },
+          matches: hosts.map(host => `https://${host}/*`),
+          allFrames: true,
+          messageManagerGroups: ["browsers"],
+          // It only runs Firefox's own intervention scripts in its page.
+          safeForUntrustedWebProcess: true,
+        });
+        this._compatActor = true;
+      } catch (error) {
+        console.error("zen-app: cannot register the compatibility fixes", error);
+      }
+    }
+    this.#publishCompat();
+  }
+
+  #publishCompat() {
+    const fixes =
+      this.settings.webcompat === false
+        ? []
+        : this.#compatFixes
+            .filter(([id]) => this._compatAvailable[id])
+            .map(([id, fix]) => ({ id, script: fix.script, hosts: [...(fix.hosts || [])] }));
+    try {
+      Services.ppmm.sharedData.set(COMPAT_KEY, fixes);
+      Services.ppmm.sharedData.flush();
+    } catch (error) {
+      console.error("zen-app: cannot publish the compatibility fixes", error);
+    }
+  }
+
+  /** Reload the app page (settings that act when a page loads). */
+  reloadApp() {
+    this.mainWindow?.appBrowser?.reload();
+  }
+
   /* ------------------------------------------------------ downloads */
 
   async #watchDownloads() {
@@ -1150,6 +1554,16 @@ class ZenAppRuntime {
       stylesCatalog: { origin: this.store.config.zenInternet?.origin, sites: this.store.config.zenInternet?.sites },
       customCss: { ...this.customCss, enabled: this.settings.customCss !== false, path: this.customCssPath },
       widevine: { ...this.widevine },
+      adblock: { ...this.adblock, enabled: this.settings.adblock !== false, id: ADBLOCK.id, name: ADBLOCK.name },
+      extensions: this.extensions.map(extension => ({ ...extension })),
+      extensionJobs: structuredClone(this.extensionJobs),
+      extensionsReady: this._addonsReady,
+      compat: this.#compatFixes.map(([id, fix]) => ({
+        id,
+        bug: fix.bug || null,
+        available: this._compatAvailable[id] !== false,
+        enabled: this.settings.webcompat !== false,
+      })),
       needsOnboarding: this.store.needsOnboarding,
       versions: {
         addon: this.addonVersion,
@@ -1217,6 +1631,11 @@ class ZenAppRuntime {
         startedAt: new Date().toISOString(),
         onboardingCompleted: !this.store.needsOnboarding,
         widevine: this.widevine.state,
+        adblock: { enabled: this.settings.adblock !== false, state: this.adblock.state, version: this.adblock.version || null },
+        extensions: this.extensions.map(extension => ({ id: extension.id, version: extension.version, enabled: extension.enabled })),
+        compat: Object.fromEntries(
+          this.#compatFixes.map(([id]) => [id, this.settings.webcompat !== false && this._compatAvailable[id] === true])
+        ),
         customCss: {
           state: this.customCss.state,
           enabled: this.settings.customCss !== false,

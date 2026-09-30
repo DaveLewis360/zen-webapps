@@ -51,6 +51,8 @@ class AppModeDefinitionTests(unittest.TestCase):
             {"disabledFeatures": ["no-separator"]},
             {"disabledFeatures": "discord.css|x"},
             {"customCss": "yes"},
+            {"adblock": 1},
+            {"webcompat": "on"},
         ):
             with self.subTest(settings=bad):
                 with self.assertRaises(AppModeError):
@@ -62,6 +64,26 @@ class AppModeDefinitionTests(unittest.TestCase):
         data = definition_to_dict(definition)
         self.assertFalse(data["settings"]["customCss"])
         self.assertFalse(definition_from_dict(data).settings.custom_css)
+
+    def test_ad_blocking_and_compat_fixes_are_on_by_default_and_round_trip(self):
+        # Definitions written before these settings existed get them switched on.
+        defaults = settings_from_dict({"appearance": "opaque"})
+        self.assertTrue(defaults.adblock)
+        self.assertTrue(defaults.webcompat)
+        definition = with_settings(definition_from_preset(PRESETS["spotify"]), adblock=False, webcompat=False)
+        data = definition_to_dict(definition)
+        self.assertEqual((False, False), (data["settings"]["adblock"], data["settings"]["webcompat"]))
+        restored = definition_from_dict(data).settings
+        self.assertEqual((False, False), (restored.adblock, restored.webcompat))
+
+    def test_only_messenger_asks_for_the_encrypted_calls_fix(self):
+        from zen_app_runtime.appmode.render import COMPAT_FIXES
+
+        for key, preset in PRESETS.items():
+            with self.subTest(preset=key):
+                self.assertTrue(set(preset.compat) <= set(COMPAT_FIXES))
+        self.assertEqual(("encoded-streams",), PRESETS["messenger"].compat)
+        self.assertEqual((), PRESETS["discord"].compat)
 
     def test_settings_round_trip_including_features(self):
         settings = settings_from_dict(

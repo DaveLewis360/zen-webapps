@@ -86,7 +86,9 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertEqual(str(self.paths.library / "discord.css"), config["customCss"]["path"])
         self.assertEqual(render.MAX_CUSTOM_CSS_BYTES, config["customCss"]["maxBytes"])
         self.assertEqual({}, config["styleAliases"])
+        self.assertEqual({}, config["compat"])
         self.assertTrue(config["definition"]["settings"]["customCss"])
+        self.assertTrue(config["definition"]["settings"]["adblock"])
         with zipfile.ZipFile(profile / "extensions" / f"{render.ADDON_ID}.xpi") as archive:
             names = set(archive.namelist())
             manifest = json.loads(archive.read("manifest.json"))
@@ -96,6 +98,8 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertEqual(prepared.render.addon_version, manifest["version"])
         self.assertNotIn("@VERSION@", json.dumps(manifest))
         self.assertIn("modules/UserCss.sys.mjs", names)
+        self.assertIn("modules/Extensions.sys.mjs", names)
+        self.assertIn("actors/ZenAppCompatChild.sys.mjs", names)
 
     def test_messenger_config_carries_its_style_aliases(self):
         _, prepared = self.prepare("messenger")
@@ -104,6 +108,18 @@ class AppModeProfileTests(unittest.TestCase):
             {"messenger.com": ["https://www.facebook.com/messages", "https://web.facebook.com/messages", "https://facebook.com/messages"]},
             config["styleAliases"],
         )
+
+    def test_messenger_config_carries_the_encrypted_calls_fix(self):
+        _, prepared = self.prepare("messenger")
+        config = json.loads((prepared.render.profile / "zen-app" / "app.json").read_text())
+        fix = config["compat"]["encoded-streams"]
+        # Firefox's own intervention script, taken from the installed Zen.
+        self.assertEqual(
+            "resource://builtin-addons/webcompat/injections/js/bug1913599-shim-createencodedstreams.js", fix["script"]
+        )
+        self.assertIn("www.facebook.com", fix["hosts"])
+        self.assertEqual(1896361, fix["bug"])
+        self.assertTrue(config["definition"]["settings"]["webcompat"])
 
     def test_rendering_is_idempotent_and_addon_is_deterministic(self):
         definition, first = self.prepare()

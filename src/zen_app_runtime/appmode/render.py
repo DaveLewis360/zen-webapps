@@ -44,6 +44,21 @@ EXTRAS: dict[str, dict[str, str]] = {
     "facebook-messages-glass": {"file": "facebook-messages-glass.css", "when": "glass"},
 }
 
+# Site compatibility fixes a preset can ask for (Preset.compat). Each one is a
+# page script of Firefox's own web compatibility interventions, taken from the
+# installed Zen (so it follows Mozilla's updates) and run in the page before
+# its scripts. Firefox itself ships them only in Nightly so far.
+COMPAT_FIXES: dict[str, dict[str, Any]] = {
+    # Messenger's encrypted calls use Chrome's legacy createEncodedStreams();
+    # the shim maps it onto the standard RTCRtpScriptTransform.
+    # https://bugzilla.mozilla.org/show_bug.cgi?id=1896361
+    "encoded-streams": {
+        "script": "resource://builtin-addons/webcompat/injections/js/bug1913599-shim-createencodedstreams.js",
+        "hosts": ["www.facebook.com", "web.facebook.com", "facebook.com"],
+        "bug": 1896361,
+    },
+}
+
 TILING_DESKTOPS = {
     "hyprland", "sway", "niri", "river", "i3", "bspwm", "qtile", "dwl", "herbstluftwm",
     "awesome", "xmonad", "dwm", "leftwm", "spectrwm", "mango", "mangowc",
@@ -363,6 +378,11 @@ def render_app_config(
         "zenInternet": catalog_meta(paths),
         "customCss": {"path": str(paths.custom_css_path(definition.id)), "maxBytes": MAX_CUSTOM_CSS_BYTES},
         "styleAliases": {key: list(value) for key, value in (preset.style_aliases if preset else {}).items()},
+        "compat": {
+            key: {"script": COMPAT_FIXES[key]["script"], "hosts": list(COMPAT_FIXES[key]["hosts"]), "bug": COMPAT_FIXES[key]["bug"]}
+            for key in (preset.compat if preset else ())
+            if key in COMPAT_FIXES
+        },
         "glass": {"sources": sources or {}, "resolved": resolve_glass(definition.settings.glass, sources or {})},
         "inheritedPrefs": {"from": str(inherited_from) if inherited_from else None, "prefs": inherited or {}},
         "schemePaths": scheme_paths(),
