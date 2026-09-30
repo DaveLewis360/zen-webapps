@@ -172,7 +172,7 @@ def generated_icon_svg(name: str, accent: str) -> str:
 
 
 def manager_icon_svg() -> str:
-    """The Webappok icon: a 12-lobed cookie holding a grid of three apps and a plus."""
+    """The Web Apps icon: a 12-lobed cookie holding a grid of three apps and a plus."""
     path = cookie_path(lobes=12, amplitude=0.055)
     tiles = "\n".join(
         f'  <rect x="{x}" y="{y}" width="50" height="50" rx="16" fill="{fill}"/>'

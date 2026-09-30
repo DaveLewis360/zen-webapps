@@ -162,22 +162,62 @@ class UserCssCompilerTests(unittest.TestCase):
         self.assertEqual(3, len(result["info"]["imports"]["inlined"]))
         self.assertIn("import", result["info"]["warnings"])
 
-    def test_palette_fills_only_the_caelestia_block(self):
+    def test_caelestia_block_is_linked_to_the_palette(self):
         source = (
             ":root { --primary: #111111; }\n"
-            "/* BEGIN CAELESTIA COLORS */\n:root {\n  --primary: #f9b7a5;\n  --onSurface: #f9e0da !important;\n  --unknown: #123456;\n}\n/* END CAELESTIA COLORS */\n"
+            "/* BEGIN CAELESTIA COLORS */\n:root {\n  --primary: #f9b7a5;\n  --onSurface: #f9e0da !important;\n  --shade: #123;\n}\n/* END CAELESTIA COLORS */\n"
             "body { --primary: #222222; }"
         )
-        colors = {"primary": "#AABBCC", "onSurface": "#010203", "surface": "#000000"}
-        result = self.compile(source, urls=["https://discord.com/app"], colors=colors)
+        result = self.compile(source, urls=["https://discord.com/app"])
         css = result["pages"]["https://discord.com/app"]
-        self.assertEqual({"blocks": 1, "applied": 2}, result["info"]["palette"])
-        self.assertIn("--primary: #aabbcc;", css)
-        self.assertIn("--onSurface: #010203 !important;", css)
-        self.assertIn("--unknown: #123456;", css)
+        self.assertEqual({"blocks": 1, "names": ["primary", "onSurface", "shade"]}, result["info"]["palette"])
+        # The written colour stays the fallback; outside the block nothing changes.
+        self.assertIn("--primary: var(--zenapp-c-primary, #f9b7a5);", css)
+        self.assertIn("--onSurface: var(--zenapp-c-onSurface, #f9e0da) !important;", css)
+        self.assertIn("--shade: var(--zenapp-c-shade, #123);", css)
         self.assertIn(":root { --primary: #111111; }", css)
         self.assertIn("body { --primary: #222222; }", css)
-        self.assertEqual({"blocks": 1, "applied": 0}, self.compile(source)["info"]["palette"])
+        self.assertEqual([{"prefix": "--zenapp-c-", "names": ["primary", "onSurface", "shade"]}], result["program"]["palette"])
+        dark = self.compile(source, urls=["https://discord.com/app"], palettePrefix="--zenapp-cd-")
+        self.assertIn("--primary: var(--zenapp-cd-primary, #f9b7a5);", dark["pages"]["https://discord.com/app"])
+        self.assertEqual([], self.compile("p { color: red }")["program"]["palette"])
+
+    def test_palette_values_and_sheet(self):
+        values, sheet, empty = self.node(
+            f"""
+            import {{ paletteSheet, paletteValues }} from {json.dumps(USER_CSS)};
+            const values = paletteValues([
+              {{ prefix: "--zenapp-cd-", names: ["primary", "onSurface", "missing", "bad name"], colors: {{ primary: "#AABBCC", onSurface: "#010203", "bad name": "#000000" }} }},
+              {{ prefix: "--zenapp-cd-", names: ["primary"], colors: {{ primary: "#ffffff" }} }},
+              {{ prefix: "--zenapp-c-", names: ["surface"], colors: {{ surface: "not a colour" }} }},
+              {{ prefix: "not-a-prefix", names: ["x"], colors: {{ x: "#000000" }} }},
+            ]);
+            console.log(JSON.stringify([values, paletteSheet(values), paletteSheet({{}})]));
+            """
+        )
+        # The first value of a property wins; bad names and values are left out.
+        self.assertEqual({"--zenapp-cd-primary": "#aabbcc", "--zenapp-cd-onSurface": "#010203"}, values)
+        self.assertIn('@property --zenapp-cd-primary { syntax: "<color>"; inherits: true; initial-value: transparent; }', sheet)
+        self.assertIn(":root {\n  --zenapp-cd-primary: #aabbcc;\n  --zenapp-cd-onSurface: #010203;\n}", sheet)
+        self.assertEqual("", empty)
+
+    def test_programs_merge_in_order(self):
+        result = self.node(
+            f"""
+            import {{ compileUserCss, mergePrograms, selectCss }} from {json.dumps(USER_CSS)};
+            const scope = {json.dumps(DISCORD)};
+            const theme = compileUserCss("/* BEGIN CAELESTIA COLORS */ :root {{ --a: #111111; }} /* END CAELESTIA COLORS */ .t {{ color: var(--a) }}", {{ ...scope, palettePrefix: "--zenapp-cd-" }}).program;
+            const own = compileUserCss("@namespace url(http://www.w3.org/1999/xhtml);\\n.t {{ color: red }}", scope).program;
+            const merged = mergePrograms([theme, null, own]);
+            console.log(JSON.stringify({{ merged, css: selectCss(merged, "https://discord.com/app"), single: mergePrograms([null, own]) === own, none: mergePrograms([null]) }}));
+            """
+        )
+        css = result["css"]
+        self.assertTrue(css.startswith("@namespace url(http://www.w3.org/1999/xhtml);"))
+        self.assertLess(css.index("var(--a)"), css.index("color: red"))  # the app's CSS can override the theme
+        self.assertEqual([{"prefix": "--zenapp-cd-", "names": ["a"]}], result["merged"]["palette"])
+        self.assertTrue(result["single"])
+        self.assertIsNone(result["none"])
 
     def test_broken_or_hostile_files_stay_balanced(self):
         for source in (
@@ -233,15 +273,19 @@ class UserCssCompilerTests(unittest.TestCase):
             f"""
             import {{ paletteColors, derivePalette }} from {json.dumps((MODULES / "Palette.sys.mjs").as_uri())};
             const seed = derivePalette("#7b6cff", true);
-            const system = {{ ...seed, source: "system", scheme: {{ success: "#b5ccba", primary: "#000001" }} }};
-            console.log(JSON.stringify([paletteColors(seed), paletteColors(system), paletteColors(null)]));
+            const system = {{ ...seed, source: "system", scheme: {{ success: "#B5CCBA", primary: "#000001", mauve: "#98c3ff" }} }};
+            console.log(JSON.stringify([paletteColors(seed), paletteColors(system), paletteColors(derivePalette("#7b6cff", false)), paletteColors(null)]));
             """
         )
-        seed, system, none = result
+        seed, system, light, none = result
         self.assertEqual(seed["surface"], seed["background"])
         self.assertEqual(seed["primary"], seed["surfaceTint"])
-        self.assertNotIn("success", seed)
-        self.assertEqual("#b5ccba", system["success"])
+        self.assertEqual(seed["primary"], seed["primaryDim"])
+        # Caelestia's fixed success colours, in the palette's brightness.
+        self.assertEqual("#b5ccba", seed["success"])
+        self.assertNotEqual(seed["success"], light["success"])
+        self.assertNotIn("mauve", seed)
+        self.assertEqual(("#b5ccba", "#98c3ff"), (system["success"], system["mauve"]))
         self.assertNotEqual("#000001", system["primary"])  # the M3 roles win over raw scheme names
         self.assertIsNone(none)
 

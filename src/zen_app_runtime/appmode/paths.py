@@ -87,7 +87,7 @@ class AppModePaths:
         """An icon the user picked for an app (png or svg), next to its definition."""
         return self.library / f"{app_id}.{extension}"
 
-    # The Webappok manager: a Zen profile of its own, outside the app ids.
+    # The Web Apps manager: a Zen profile of its own, outside the app ids.
     def manager_dir(self) -> Path:
         return self.data / ".manager"
 

@@ -59,6 +59,57 @@ COMPAT_FIXES: dict[str, dict[str, Any]] = {
     },
 }
 
+# Page themes a preset can bring (Preset.theme; files in addon/page-themes):
+# CSS loaded into the site's own pages as an author sheet, like a Vencord or
+# Stylus theme, before the app's custom CSS (which can override it). A "dark"
+# theme is coloured in the dark tones of the wallpaper scheme (also for a
+# light wallpaper) and keeps the page in dark mode; a "glass" theme needs the
+# translucent appearance. settings.disabledFeatures "theme|<id>" switches one off.
+PAGE_THEMES: dict[str, dict[str, str]] = {
+    "discord-midnight": {
+        "file": "discord-midnight.css",
+        "name": "Midnight",
+        "author": "refact0r",
+        "url": "https://github.com/refact0r/midnight-discord",
+        "license": "MIT",
+        "scheme": "dark",
+        "when": "glass",
+    },
+}
+
+# The language of the app's own words and of the pages it asks for. English
+# only for now; British English keeps the 24-hour clock and day-month dates.
+UI_LANGUAGE = "en"
+PAGE_LANGUAGES = "en-GB, en"
+
+
+def theme_feature_key(theme_id: str) -> str:
+    return f"theme|{theme_id}"
+
+
+def page_theme_ids(definition: AppDefinition) -> tuple[str, ...]:
+    preset = get_preset(definition.preset) if definition.preset else None
+    return tuple(key for key in ((preset.theme,) if preset and preset.theme else ()) if key in PAGE_THEMES)
+
+
+def active_page_themes(definition: AppDefinition) -> list[str]:
+    """The page themes that apply with the current settings (as the add-on decides)."""
+    settings = definition.settings
+    return [
+        key
+        for key in page_theme_ids(definition)
+        if theme_feature_key(key) not in settings.disabled_features
+        and (PAGE_THEMES[key]["when"] != "glass" or settings.appearance == "transparent")
+        and (PAGE_THEMES[key]["scheme"] != "dark" or settings.color_scheme != "light")
+    ]
+
+
+def forces_dark_content(definition: AppDefinition) -> bool:
+    """A dark page theme keeps a "system" colour scheme app's pages dark."""
+    return definition.settings.color_scheme == "system" and any(
+        PAGE_THEMES[key]["scheme"] == "dark" for key in active_page_themes(definition)
+    )
+
 TILING_DESKTOPS = {
     "hyprland", "sway", "niri", "river", "i3", "bspwm", "qtile", "dwl", "herbstluftwm",
     "awesome", "xmonad", "dwm", "leftwm", "spectrwm", "mango", "mangowc",
@@ -160,6 +211,10 @@ BASELINE_PREFS: dict[str, Any] = {
     "browser.ml.linkPreview.enabled": False,
     "permissions.default.geo": 2,
     "permissions.default.xr": 2,
+    # English, like the app's own words: the browser's prompts and menus, and
+    # the language pages are asked for (Accept-Language, navigator.language).
+    "intl.locale.requested": "en-GB,en-US",
+    "intl.accept_languages": PAGE_LANGUAGES,
     # Zen: no welcome, update toasts, workspaces gestures, glance or split view.
     "zen.welcome-screen.seen": True,
     "zen.updates.show-update-notification": False,
@@ -266,6 +321,8 @@ def settings_prefs(definition: AppDefinition, window_chrome_auto: str) -> dict[s
     prefs: dict[str, Any] = {}
     for key, value in values.items():
         prefs.update(SETTINGS_PREFS[key].get(value, {}))
+    if forces_dark_content(definition):
+        prefs["layout.css.prefers-color-scheme.content-override"] = 0
     return prefs
 
 
@@ -342,14 +399,6 @@ def build_addon() -> tuple[bytes, str]:
     return buffer.getvalue(), version
 
 
-def locale_hint() -> str:
-    for variable in ("LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"):
-        value = os.environ.get(variable, "")
-        if value and value not in ("C", "POSIX"):
-            return value.split(":")[0].split(".")[0].replace("_", "-")
-    return "en"
-
-
 def render_app_config(
     definition: AppDefinition,
     paths: AppModePaths,
@@ -366,11 +415,7 @@ def render_app_config(
     role: str = "app",
 ) -> dict[str, Any]:
     preset = get_preset(definition.preset) if definition.preset else None
-    locale = locale_hint()
-    language = locale.split("-")[0].lower()
-    tagline = ""
-    if preset and preset.tagline:
-        tagline = preset.tagline.get(language) or preset.tagline.get("en", "")
+    tagline = preset.tagline.get(UI_LANGUAGE, "") if preset and preset.tagline else ""
     return {
         "configVersion": 1,
         "role": role,
@@ -391,10 +436,11 @@ def render_app_config(
             for key in (preset.compat if preset else ())
             if key in COMPAT_FIXES
         },
+        "pageThemes": [{"id": key, **PAGE_THEMES[key]} for key in page_theme_ids(definition)],
         "glass": {"sources": sources or {}, "resolved": resolve_glass(definition.settings.glass, sources or {})},
         "inheritedPrefs": {"from": str(inherited_from) if inherited_from else None, "prefs": inherited or {}},
         "schemePaths": scheme_paths(),
-        "locale": locale,
+        "locale": UI_LANGUAGE,
         "runtime": {"binary": str(zen.binary), "version": zen.version, "gecko": zen.gecko},
         "package": {"version": PACKAGE_VERSION, "addonVersion": addon_version},
         "launcher": {"shim": str(paths.shim_path())},

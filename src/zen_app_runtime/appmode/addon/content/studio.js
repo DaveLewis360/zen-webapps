@@ -287,7 +287,16 @@ function appearanceSection() {
       )
     );
   }
-  return h("div", {}, choices, h("div", { class: "panel" }, glassRow, tint, controls), MODE === "settings" ? null : stylesPanel(false), MODE === "settings" ? null : customCssPanel(), ...notes);
+  return h(
+    "div",
+    {},
+    choices,
+    h("div", { class: "panel" }, glassRow, tint, controls),
+    MODE === "settings" ? null : themePanel(),
+    MODE === "settings" ? null : stylesPanel(false),
+    MODE === "settings" ? null : customCssPanel(),
+    ...notes
+  );
 }
 
 function formatBytes(bytes) {
@@ -399,6 +408,39 @@ function customCssPanel() {
     }
   });
   return h("div", { class: "panel" }, element);
+}
+
+/** The preset's page theme (e.g. Midnight for Discord): on or off. */
+function themePanel() {
+  const themes = model.pageThemes || [];
+  if (!themes.length) {
+    return null;
+  }
+  const panel = h("div", { class: "panel" });
+  for (const theme of themes) {
+    const current = () => (model.pageThemes || []).find(entry => entry.id === theme.id) || theme;
+    const title = t("theme.title", { name: theme.name });
+    const element = row({
+      iconName: "wallpaper",
+      title,
+      text: " ",
+      on: () => current().active,
+      trailing: toggle(title, () => current().enabled, value => ZenApp.setPageTheme(theme.id, value).then(refresh)),
+    });
+    const body = element.querySelector(".text > .body");
+    bind(() => {
+      const state = current();
+      const notes = [t("theme.desc", { author: state.author || "" })];
+      if (state.enabled && state.blocked) {
+        notes.push(t(`theme.blocked.${state.blocked}`));
+      } else if (state.waiting) {
+        notes.push(t("theme.waiting", { name: state.name }));
+      }
+      body.textContent = notes.join(" ");
+    });
+    panel.append(element);
+  }
+  return panel;
 }
 
 function stylesPanel(detailed) {
@@ -1098,7 +1140,7 @@ function renderSettings(root) {
   );
   const names = [
     ["appearance", t("settings.appearance"), appearanceSection],
-    ["styles", t("settings.styles"), () => h("div", {}, customCssPanel(), stylesPanel(true))],
+    ["styles", t("settings.styles"), () => h("div", {}, themePanel(), customCssPanel(), stylesPanel(true))],
     ["permissions", t("settings.permissions"), permissionsSection],
     ["extensions", t("settings.extensions"), () => h("div", {}, adblockPanel(), extensionsPanel())],
     ["keys", t("settings.keys"), keysSection],

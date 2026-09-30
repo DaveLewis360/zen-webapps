@@ -15,8 +15,8 @@ from .paths import AppModePaths, desktop_id
 from .presets import get_preset
 
 _GENERIC_NAMES = {
-    "AudioVideo": {"en": "Music player", "hu": "Zenelejátszó"},
-    "InstantMessaging": {"en": "Messaging", "hu": "Üzenetküldő"},
+    "AudioVideo": "Music player",
+    "InstantMessaging": "Messaging",
 }
 
 
@@ -33,20 +33,17 @@ def _list(values: tuple[str, ...]) -> str:
 def render_desktop_entry(definition: AppDefinition, icon: IconChoice, shim: Path) -> str:
     identity = desktop_id(definition.id)
     preset = get_preset(definition.preset) if definition.preset else None
-    comment_en = (preset.tagline.get("en") if preset else "") or f"{definition.name} as a native app"
-    comment_hu = (preset.tagline.get("hu") if preset else "") or f"{definition.name} natív appként"
+    comment = (preset.tagline.get("en") if preset else "") or f"{definition.name} as a native app"
     lines = [
         "[Desktop Entry]",
         "Type=Application",
         "Version=1.5",
         f"Name={desktop_value(definition.name)}",
-        f"Comment={desktop_value(comment_en)}",
-        f"Comment[hu]={desktop_value(comment_hu)}",
+        f"Comment={desktop_value(comment)}",
     ]
-    for category, names in _GENERIC_NAMES.items():
+    for category, name in _GENERIC_NAMES.items():
         if category in definition.categories:
-            lines.append(f"GenericName={desktop_value(names['en'])}")
-            lines.append(f"GenericName[hu]={desktop_value(names['hu'])}")
+            lines.append(f"GenericName={desktop_value(name)}")
             break
     lines += [
         f"Exec={render_exec([str(shim), 'run', definition.id])} %U",
@@ -64,7 +61,6 @@ def render_desktop_entry(definition: AppDefinition, icon: IconChoice, shim: Path
         "",
         "[Desktop Action settings]",
         "Name=Settings",
-        "Name[hu]=Beállítások",
         f"Exec={render_exec([str(shim), 'settings', definition.id])}",
         "",
     ]

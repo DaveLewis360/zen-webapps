@@ -1,0 +1,255 @@
+/*
+ * zen-app-runtime app mode: Discord in Midnight, in the wallpaper's colours.
+ *
+ * Midnight (https://github.com/refact0r/midnight-discord, MIT, (c) refact0r)
+ * is imported from its site and cached for a day, the way Vencord loads a
+ * theme. The colour block below follows the wallpaper scheme (Caelestia,
+ * matugen) in dark tones, also for a light wallpaper, and fades to a new one
+ * together with the shell; its values are only the fallback. The rest maps
+ * those colours onto Midnight and lets the window's glass show through.
+ *
+ * Loaded into Discord's pages as an author sheet (ZenAppCss), before the
+ * app's own CSS, which can override any of it. Settings -> Styles turns it off.
+ */
+@import url("https://refact0r.github.io/midnight-discord/build/midnight.css");
+
+/* BEGIN CAELESTIA COLORS */
+:root {
+  --primary: #aacae9;
+  --primaryDim: #9cbcda;
+  --onPrimary: #22435c;
+  --primaryContainer: #35556f;
+  --onPrimaryContainer: #cde6ff;
+  --secondary: #b8c8d9;
+  --onSecondary: #324250;
+  --secondaryContainer: #2e3d4b;
+  --onSecondaryContainer: #b1c1d2;
+  --tertiary: #dedcff;
+  --onTertiary: #4b4c75;
+  --tertiaryContainer: #cecdfe;
+  --onTertiaryContainer: #43446c;
+  --error: #fa746f;
+  --onError: #490006;
+  --errorContainer: #871f21;
+  --onErrorContainer: #ff9993;
+  --background: #0b0e11;
+  --onBackground: #e0e6ee;
+  --surface: #0b0e11;
+  --surfaceDim: #0b0e11;
+  --surfaceBright: #262d33;
+  --surfaceContainerLowest: #000000;
+  --surfaceContainerLow: #101418;
+  --surfaceContainer: #151a1f;
+  --surfaceContainerHigh: #1b2025;
+  --surfaceContainerHighest: #20262c;
+  --onSurface: #e0e6ee;
+  --surfaceVariant: #20262c;
+  --onSurfaceVariant: #a5acb3;
+  --inverseSurface: #f8f9fd;
+  --inverseOnSurface: #535559;
+  --outline: #70767d;
+  --outlineVariant: #42494f;
+  --shadow: #000000;
+  --scrim: #000000;
+  --surfaceTint: #aacae9;
+  --success: #b5ccba;
+  --onSuccess: #213528;
+  --successContainer: #374b3e;
+  --onSuccessContainer: #d1e9d6;
+  --yellow: #d0f9f4;
+  --mauve: #98c3ff;
+}
+/* END CAELESTIA COLORS */
+
+/* The wallpaper colours in Midnight's roles. */
+:root {
+  --colors: on;
+
+  /* text */
+  --text-0: var(--onPrimary) !important;
+  --text-1: var(--onSurface) !important;
+  --text-2: var(--onSurfaceVariant) !important;
+  --text-3: var(--outline) !important;
+  --text-4: var(--outlineVariant) !important;
+  --text-5: var(--outlineVariant) !important;
+  --text-link: var(--surfaceTint) !important;
+
+  /* accents */
+  --accent-1: var(--primary) !important;
+  --accent-2: var(--secondary) !important;
+  --accent-3: var(--tertiary) !important;
+  --accent-4: var(--primaryContainer) !important;
+  --accent-5: var(--primaryDim) !important;
+  --accent-6: var(--onPrimaryContainer) !important;
+  --accent-new: var(--error) !important;
+
+  /* interaction states */
+  --hover: color-mix(in srgb, var(--onSurface) 8%, transparent) !important;
+  --active: color-mix(in srgb, var(--onSurface) 10%, transparent) !important;
+  --active-2: color-mix(in srgb, var(--onSurface) 20%, transparent) !important;
+  --message-hover: color-mix(in srgb, var(--onSurface) 8%, transparent) !important;
+
+  /* mentions and replies */
+  --mention: linear-gradient(to right, color-mix(in hsl, var(--primary) 10%, transparent) 40%, transparent) !important;
+  --mention-hover: linear-gradient(to right, color-mix(in hsl, var(--primary) 5%, transparent) 40%, transparent) !important;
+  --reply: linear-gradient(to right, color-mix(in hsl, var(--text-3) 10%, transparent) 40%, transparent) !important;
+  --reply-hover: linear-gradient(to right, color-mix(in hsl, var(--text-3) 5%, transparent) 40%, transparent) !important;
+
+  /* status */
+  --online: var(--success) !important;
+  --dnd: var(--error) !important;
+  --idle: var(--yellow) !important;
+  --streaming: var(--mauve) !important;
+  --offline: var(--text-4) !important;
+
+  /* borders */
+  --border-light: color-mix(in srgb, var(--outline) 0%, transparent) !important;
+  --border: color-mix(in srgb, var(--outline) 20%, transparent) !important;
+  --button-border: color-mix(in srgb, var(--outline) 0%, transparent) !important;
+
+  /* the few solid surfaces */
+  --input-background: var(--surfaceContainerHighest) !important;
+  --background-floating: var(--surfaceContainerHighest) !important;
+  --channeltextarea-background: var(--surfaceContainer) !important;
+
+  /* Midnight's base scales */
+  --blue-1: var(--onPrimaryContainer) !important;
+  --blue-2: var(--primary) !important;
+  --blue-3: color-mix(in srgb, var(--primary) 85%, var(--surface)) !important;
+  --blue-4: color-mix(in srgb, var(--primary) 70%, var(--surface)) !important;
+  --blue-5: color-mix(in srgb, var(--primary) 55%, var(--surface)) !important;
+
+  --red-1: var(--error) !important;
+  --red-2: color-mix(in srgb, var(--error) 90%, var(--onSurface)) !important;
+  --red-3: color-mix(in srgb, var(--error) 80%, var(--onSurface)) !important;
+  --red-4: color-mix(in srgb, var(--error) 70%, var(--onSurface)) !important;
+  --red-5: color-mix(in srgb, var(--error) 60%, var(--onSurface)) !important;
+
+  --green-1: var(--success) !important;
+  --green-2: color-mix(in srgb, var(--success) 90%, var(--onSurface)) !important;
+  --green-3: color-mix(in srgb, var(--success) 80%, var(--onSurface)) !important;
+  --green-4: color-mix(in srgb, var(--success) 70%, var(--onSurface)) !important;
+  --green-5: color-mix(in srgb, var(--success) 60%, var(--onSurface)) !important;
+
+  --yellow-1: var(--yellow) !important;
+  --yellow-2: color-mix(in srgb, var(--yellow) 90%, var(--onSurface)) !important;
+  --yellow-3: color-mix(in srgb, var(--yellow) 80%, var(--onSurface)) !important;
+  --yellow-4: color-mix(in srgb, var(--yellow) 70%, var(--onSurface)) !important;
+  --yellow-5: color-mix(in srgb, var(--yellow) 60%, var(--onSurface)) !important;
+
+  --purple-1: var(--mauve) !important;
+  --purple-2: color-mix(in srgb, var(--mauve) 90%, var(--onSurface)) !important;
+  --purple-3: color-mix(in srgb, var(--mauve) 80%, var(--onSurface)) !important;
+  --purple-4: color-mix(in srgb, var(--mauve) 70%, var(--onSurface)) !important;
+  --purple-5: color-mix(in srgb, var(--mauve) 60%, var(--onSurface)) !important;
+}
+
+/* Midnight's options. */
+body {
+  --font: "figtree";
+  --code-font: "JetBrainsMono NF";
+  font-weight: 400;
+  --gap: 12px;
+  --divider-thickness: 4px;
+  --border-thickness: 1px;
+  --animations: on;
+  --list-item-transition: 0.2s ease;
+  --dms-icon-svg-transition: 0.4s ease;
+  --border-hover-transition: 0.2s ease;
+  --top-bar-height: var(--gap);
+  --top-bar-button-position: titlebar;
+  --top-bar-title-position: off;
+  --custom-window-controls: on;
+  --window-control-size: 14px;
+  /* The Discord logo on the home button: Midnight's moon comes from a site
+     Discord's content policy does not let images load from. */
+  --custom-dms-icon: off;
+  --dms-icon-color-before: var(--onSurfaceVariant);
+  --transparency-tweaks: on;
+  --remove-bg-layer: on;
+  --panel-blur: on;
+  --blur-amount: 25px;
+  --bg-1: rgba(0, 0, 0, 0) !important;
+  --bg-2: rgba(0, 0, 0, 0) !important;
+  --bg-3: rgba(0, 0, 0, 0) !important;
+  --bg-4: rgba(0, 0, 0, 0) !important;
+  --bg-floating: rgba(10, 10, 10, 0.85);
+}
+
+/* Firefox paints scrollbars with scrollbar-color, which Midnight leaves on
+   its yellow-on-lime placeholders (Chromium uses ::-webkit-scrollbar). */
+body,
+.theme-dark:not(.custom-user-profile-theme),
+.theme-light:not(.custom-user-profile-theme) {
+  --scrollbar-auto-scrollbar-color-thumb: color-mix(in srgb, var(--onSurface) 22%, transparent) !important;
+  --scrollbar-auto-scrollbar-color-track: transparent !important;
+}
+
+/* Glass: Discord's own backgrounds out of the way. */
+:root,
+.theme-light,
+.theme-dark {
+  --background-secondary: #00000000 !important;
+  --background-primary: #00000000 !important;
+  --background-tertiary: #00000000 !important;
+  --home-background: #00000000 !important;
+  --bg-base-primary: #00000000 !important;
+  --background-base-lowest: transparent !important;
+  --background-base-lower: transparent !important;
+  --background-modifier-accent: transparent !important;
+}
+
+html,
+body,
+nav,
+header,
+[class*="app-root"],
+#pass-sidebar,
+#main,
+#content,
+section,
+[class*="callContainer_"],
+[class*="bg_"],
+[class*="tabBody_"],
+[class*="sidebarList_"],
+main,
+[class*="chat_"],
+[class*="page_"],
+[class*="children_"]::after,
+[class*="header_"],
+[class*="contentRegionScroller_"],
+[class*="container_"],
+[aria-label="Resize Sidebar"],
+.visual-refresh [class*="root_"],
+main + div,
+main + div > aside > div,
+#online-tab + div > aside {
+  background-color: transparent !important;
+  background: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  transition: background-color 0.5s ease-in-out !important;
+}
+
+[class*="mainCard_"] {
+  background: none !important;
+}
+
+[class*="floating_"] {
+  background-color: rgba(10, 10, 10, 0.85) !important;
+}
+
+#app-mount {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+[class*="app_"] {
+  color: transparent !important;
+}
+
+/* Unread and mention badges in the wallpaper's accent. */
+[class*="numberBadge_"],
+[class*="mention_"] {
+  background-color: var(--primary) !important;
+  color: var(--onPrimary) !important;
+}

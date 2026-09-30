@@ -1,6 +1,6 @@
 /* zen-app-runtime app mode: suggestions for a new app from its website.
  *
- * Pure functions over plain data: the Webappok wizard downloads the page
+ * Pure functions over plain data: the Web Apps wizard downloads the page
  * (Manager.sys.mjs), parses it inertly (DOMParser, in the page) into "facts"
  * and gets its suggestions here: a name, the icons worth trying, the sign-in
  * services the site uses, and whether the whole domain belongs to the app.

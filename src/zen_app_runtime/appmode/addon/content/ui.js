@@ -1,4 +1,4 @@
-/* zen-app-runtime app mode — UI helpers shared by the studio and Webappok pages.
+/* zen-app-runtime app mode — UI helpers shared by the studio and Web Apps pages.
  * A classic script: it defines window.ZenUI (like shapes.js defines ZenShapes).
  */
 "use strict";

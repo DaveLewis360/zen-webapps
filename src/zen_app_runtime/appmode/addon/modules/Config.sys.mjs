@@ -75,6 +75,40 @@ export function settingsToPrefs(settings, config) {
   return prefs;
 }
 
+/** settings.disabledFeatures entry that switches a page theme off. */
+export function themeFeatureKey(id) {
+  return `theme|${id}`;
+}
+
+/**
+ * The app's page themes (app.json pageThemes) and whether each applies now:
+ * switched on, and not blocked by an opaque window ("glass" themes) or an
+ * explicit light colour scheme ("dark" themes). Same rule as
+ * render.active_page_themes.
+ */
+export function pageThemeStates(config, settings) {
+  const off = new Set(settings.disabledFeatures || []);
+  return (config.pageThemes || []).map(theme => {
+    const enabled = !off.has(themeFeatureKey(theme.id));
+    const blocked =
+      theme.when === "glass" && settings.appearance !== "transparent"
+        ? "glass"
+        : theme.scheme === "dark" && settings.colorScheme === "light"
+          ? "light"
+          : null;
+    return { ...theme, enabled, blocked, active: enabled && !blocked };
+  });
+}
+
+/** settingsToPrefs, and a dark page theme keeps a "system" app's pages dark. */
+export function effectivePrefs(settings, config) {
+  const prefs = settingsToPrefs(settings, config);
+  if (settings.colorScheme === "system" && pageThemeStates(config, settings).some(theme => theme.active && theme.scheme === "dark")) {
+    prefs["layout.css.prefers-color-scheme.content-override"] = 0;
+  }
+  return prefs;
+}
+
 export function applyPrefs(prefs) {
   for (const [name, value] of Object.entries(prefs)) {
     try {
@@ -174,7 +208,7 @@ export class ConfigStore {
     if (begin < 0 || end < begin) {
       return;
     }
-    const prefs = settingsToPrefs(this.settings, this.config);
+    const prefs = effectivePrefs(this.settings, this.config);
     const lines = Object.keys(prefs)
       .sort()
       .map(name => `user_pref(${JSON.stringify(name)}, ${renderPrefValue(prefs[name])});`);

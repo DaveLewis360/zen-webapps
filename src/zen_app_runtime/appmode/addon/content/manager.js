@@ -1,4 +1,4 @@
-/* zen-app-runtime app mode — Webappok, the app manager (privileged page).
+/* zen-app-runtime app mode — Web Apps, the app manager (privileged page).
  * Lists the apps, opens them and their settings, refreshes and removes
  * them; every action goes through the zen-app CLI (ZenApp.manager).
  */

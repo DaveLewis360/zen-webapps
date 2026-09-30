@@ -1,4 +1,4 @@
-"""Webappok (Web Apps): the app that lists, opens, creates and removes web apps.
+"""Web Apps: the app that lists, opens, creates and removes web apps.
 
 It is a Zen profile of its own, rendered like an app profile (same glass,
 palette and add-on) with the role "manager": the add-on then shows its app
@@ -20,11 +20,12 @@ from .icons import IconChoice, manager_icon_svg
 from .launcher import LaunchOutcome, identity_environment, launch_profile, process_link, running_pid
 from .library import render_definition, write_private_file
 from .paths import AppModePaths
-from .render import RenderResult, locale_hint, render_profile
+from .render import RenderResult, render_profile
 from .zen import ZenRuntime, find_zen
 
 MANAGER_ID = "zen-apps"
 MANAGER_IDENTITY = "zen-apps"
+MANAGER_NAME = "Web Apps"
 # Never loaded: the manager shows its own page. Every web link leaves it.
 MANAGER_START_URL = "https://zen-apps.invalid/"
 
@@ -36,14 +37,10 @@ class PreparedManager:
     desktop_entry: Path
 
 
-def manager_name(locale: str | None = None) -> str:
-    return "Webappok" if (locale or locale_hint()).lower().startswith("hu") else "Web Apps"
-
-
-def manager_definition(locale: str | None = None) -> AppDefinition:
+def manager_definition() -> AppDefinition:
     return AppDefinition(
         id=MANAGER_ID,
-        name=manager_name(locale),
+        name=MANAGER_NAME,
         start_url=MANAGER_START_URL,
         scope_hosts=("zen-apps.invalid",),
         accent="#7b6cff",
@@ -68,12 +65,9 @@ def render_manager_entry(shim: Path, icon_name: str = MANAGER_IDENTITY) -> str:
             "[Desktop Entry]",
             "Type=Application",
             "Version=1.5",
-            "Name=Web Apps",
-            "Name[hu]=Webappok",
+            f"Name={MANAGER_NAME}",
             "GenericName=Web app manager",
-            "GenericName[hu]=Webapp-kezelő",
             "Comment=Turn websites into apps and manage them",
-            "Comment[hu]=Weboldalakból appok, és azok kezelése",
             f"Exec={render_exec([str(shim), 'studio'])}",
             f"Icon={desktop_value(icon_name)}",
             "Terminal=false",
@@ -81,12 +75,10 @@ def render_manager_entry(shim: Path, icon_name: str = MANAGER_IDENTITY) -> str:
             f"StartupWMClass={MANAGER_IDENTITY}",
             "Categories=Utility;",
             "Keywords=web;app;webapp;zen;pwa;",
-            "Keywords[hu]=web;app;webapp;zen;alkalmazás;",
             "Actions=new;",
             "",
             "[Desktop Action new]",
             "Name=New app",
-            "Name[hu]=Új app",
             f"Exec={render_exec([str(shim), 'studio', '--new'])}",
             "",
         ]
@@ -157,7 +149,7 @@ def cmd_studio(
     zen: ZenRuntime | None = None,
     popen=None,
 ) -> LaunchOutcome:
-    """Open Webappok (focus it when it already runs); `new` goes straight to the wizard."""
+    """Open Web Apps (focus it when it already runs); `new` goes straight to the wizard."""
     out = out or sys.stdout
     paths = paths or AppModePaths.default()
     zen = zen or find_zen()

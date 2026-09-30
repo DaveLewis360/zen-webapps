@@ -1,4 +1,4 @@
-/* zen-app-runtime app mode — Webappok: the new-app wizard.
+/* zen-app-runtime app mode — Web Apps: the new-app wizard.
  *
  * Source (an address or a ready-made app) → details (name, icon, colour,
  * scope, sign-ins; checked live with `zen-app new --dry-run`) → create (the

@@ -42,6 +42,8 @@ class Preset:
     style_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # Site compatibility fixes (keys of render.COMPAT_FIXES).
     compat: tuple[str, ...] = ()
+    # A page theme (key of render.PAGE_THEMES), loaded into the site's pages.
+    theme: str | None = None
 
 
 PRESETS: dict[str, Preset] = {
@@ -63,16 +65,13 @@ PRESETS: dict[str, Preset] = {
             extras=("spotify-glass",),
             icon_names=("spotify", "com.spotify.Client", "spotify-client"),
             categories=("AudioVideo", "Audio", "Music", "Player"),
-            keywords=("music", "zene", "podcast", "player"),
+            keywords=("music", "podcast", "player"),
             accent="#1ed760",
             notifications=False,
             media=False,
             autoplay=True,
             drm=True,
-            tagline={
-                "hu": "Zene és podcastok, natív ablakban.",
-                "en": "Music and podcasts in a native window.",
-            },
+            tagline={"en": "Music and podcasts in a native window."},
         ),
         Preset(
             key="discord",
@@ -82,16 +81,15 @@ PRESETS: dict[str, Preset] = {
             auth_hosts=(),
             icon_names=("discord", "com.discordapp.Discord", "discord-canary"),
             categories=("Network", "InstantMessaging", "Chat"),
-            keywords=("chat", "voice", "csevegés", "hang"),
+            keywords=("chat", "voice", "screen sharing"),
             accent="#5865f2",
             notifications=True,
             media=True,
             autoplay=True,
             drm=False,
-            tagline={
-                "hu": "Csevegés, hang és képernyőmegosztás.",
-                "en": "Chat, voice and screen sharing.",
-            },
+            tagline={"en": "Chat, voice and screen sharing."},
+            # Midnight in the wallpaper's colours (render.PAGE_THEMES).
+            theme="discord-midnight",
         ),
         Preset(
             key="messenger",
@@ -118,16 +116,13 @@ PRESETS: dict[str, Preset] = {
             extras=("facebook-messages-app", "facebook-messages-glass"),
             icon_names=("fbmessenger", "messenger", "facebook-messenger", "com.facebook.Messenger"),
             categories=("Network", "InstantMessaging", "Chat"),
-            keywords=("chat", "facebook", "üzenet"),
+            keywords=("chat", "facebook", "messages"),
             accent="#0a7cff",
             notifications=True,
             media=True,
             autoplay=True,
             drm=False,
-            tagline={
-                "hu": "A Messenger a Facebook webes üzenetküldőjén keresztül.",
-                "en": "Messenger through Facebook's web messaging.",
-            },
+            tagline={"en": "Messenger through Facebook's web messaging."},
             # messenger.com closed in April 2026 and redirects here.
             style_aliases={
                 "messenger.com": (
@@ -147,13 +142,13 @@ PRESETS: dict[str, Preset] = {
             auth_hosts=(*_GOOGLE_AUTH, "consent.youtube.com", "consent.google.com", "www.youtube.com"),
             icon_names=("youtube-music", "com.github.th_ch.youtube_music", "youtube-music-desktop-app"),
             categories=("AudioVideo", "Audio", "Music", "Player"),
-            keywords=("music", "zene", "youtube"),
+            keywords=("music", "youtube"),
             accent="#ff0033",
             notifications=False,
             media=False,
             autoplay=True,
             drm=True,
-            tagline={"hu": "Zene a YouTube-ról.", "en": "Music from YouTube."},
+            tagline={"en": "Music from YouTube."},
         ),
         Preset(
             key="whatsapp",
@@ -162,13 +157,13 @@ PRESETS: dict[str, Preset] = {
             scope_hosts=("web.whatsapp.com",),
             icon_names=("whatsapp", "com.github.eneshecan.WhatsAppForLinux", "whatsapp-desktop", "zapzap"),
             categories=("Network", "InstantMessaging", "Chat"),
-            keywords=("chat", "üzenet"),
+            keywords=("chat", "messages"),
             accent="#25d366",
             notifications=True,
             media=True,
             autoplay=True,
             drm=False,
-            tagline={"hu": "Üzenetek a telefonod mellé.", "en": "Messages alongside your phone."},
+            tagline={"en": "Messages alongside your phone."},
         ),
         Preset(
             key="telegram",
@@ -177,13 +172,13 @@ PRESETS: dict[str, Preset] = {
             scope_hosts=("web.telegram.org",),
             icon_names=("telegram", "org.telegram.desktop", "telegram-desktop"),
             categories=("Network", "InstantMessaging", "Chat"),
-            keywords=("chat", "üzenet"),
+            keywords=("chat", "messages"),
             accent="#2aabee",
             notifications=True,
             media=True,
             autoplay=True,
             drm=False,
-            tagline={"hu": "Gyors, felhőalapú üzenetküldés.", "en": "Fast, cloud-based messaging."},
+            tagline={"en": "Fast, cloud-based messaging."},
         ),
     )
 }

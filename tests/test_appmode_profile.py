@@ -89,6 +89,16 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertEqual(render.MAX_CUSTOM_CSS_BYTES, config["customCss"]["maxBytes"])
         self.assertEqual({}, config["styleAliases"])
         self.assertEqual({}, config["compat"])
+        # Discord's Midnight theme comes with the preset, dark and glass-only.
+        (theme,) = config["pageThemes"]
+        self.assertEqual(("discord-midnight", "discord-midnight.css", "dark", "glass"), (theme["id"], theme["file"], theme["scheme"], theme["when"]))
+        # ...and keeps the "system" colour scheme app's pages dark.
+        self.assertIn('user_pref("layout.css.prefers-color-scheme.content-override", 0);', user_js)
+        # English: the app's words, the browser's, and the pages it asks for.
+        self.assertEqual("en", config["locale"])
+        self.assertEqual("Chat, voice and screen sharing.", config["tagline"])
+        self.assertIn('user_pref("intl.accept_languages", "en-GB, en");', user_js)
+        self.assertIn('user_pref("intl.locale.requested", "en-GB,en-US");', user_js)
         self.assertTrue(config["definition"]["settings"]["customCss"])
         self.assertTrue(config["definition"]["settings"]["adblock"])
         with zipfile.ZipFile(profile / "extensions" / f"{render.ADDON_ID}.xpi") as archive:
@@ -102,8 +112,33 @@ class AppModeProfileTests(unittest.TestCase):
         self.assertIn("modules/UserCss.sys.mjs", names)
         self.assertIn("modules/Extensions.sys.mjs", names)
         self.assertIn("actors/ZenAppCompatChild.sys.mjs", names)
+        self.assertIn("page-themes/discord-midnight.css", names)
         for module in ("Brand", "Mpris", "MprisModel"):
             self.assertIn(f"modules/{module}.sys.mjs", names)
+
+    def test_page_theme_follows_its_settings(self):
+        definition, _ = self.prepare()
+        cases = {
+            "off": (with_settings(definition, disabled_features=("theme|discord-midnight",)), [], 2),
+            "opaque": (with_settings(definition, appearance="opaque"), [], 2),
+            "light": (with_settings(definition, color_scheme="light"), [], 1),
+            "dark": (with_settings(definition, color_scheme="dark"), ["discord-midnight"], 0),
+            "system": (definition, ["discord-midnight"], 0),
+        }
+        for label, (changed, active, content) in cases.items():
+            with self.subTest(label):
+                self.assertEqual(active, render.active_page_themes(changed))
+                prefs = render.settings_prefs(changed, "none")
+                self.assertEqual(content, prefs["layout.css.prefers-color-scheme.content-override"])
+        spotify = definition_from_preset(PRESETS["spotify"])
+        self.assertEqual(((), 2), (render.page_theme_ids(spotify), render.settings_prefs(spotify, "none")["layout.css.prefers-color-scheme.content-override"]))
+
+    def test_desktop_entries_are_english_only(self):
+        for key in PRESETS:
+            with self.subTest(key):
+                entry = render_desktop_entry(definition_from_preset(PRESETS[key]), IconChoice("x", None, "theme"), Path("/opt/zen-app"))
+                self.assertNotIn("[hu]", entry)
+                self.assertTrue(entry.isascii(), entry)
 
     def test_messenger_config_carries_its_style_aliases(self):
         _, prepared = self.prepare("messenger")
@@ -373,7 +408,7 @@ class AppModeCliTests(unittest.TestCase):
         spotify = next(p for p in presets if p["key"] == "spotify")
         self.assertEqual(["music"], spotify["installed"])
         self.assertEqual("https://open.spotify.com/", spotify["url"])
-        self.assertIn("hu", spotify["tagline"])
+        self.assertEqual({"en": "Music and podcasts in a native window."}, spotify["tagline"])
         self.assertEqual([], next(p for p in presets if p["key"] == "discord")["installed"])
 
     def test_custom_css_command_sets_switches_and_removes(self):

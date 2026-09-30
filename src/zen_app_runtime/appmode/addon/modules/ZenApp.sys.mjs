@@ -7,21 +7,28 @@ import { MediaBridge } from "resource://zenapp/modules/Mpris.sys.mjs";
 import {
   ConfigStore,
   applyPrefs,
+  effectivePrefs,
+  pageThemeStates,
   resolvedWindowChrome,
-  settingsToPrefs,
+  themeFeatureKey,
 } from "resource://zenapp/modules/Config.sys.mjs";
 import { paletteColors, paletteToCSSVariables, resolvePalette } from "resource://zenapp/modules/Palette.sys.mjs";
 import { Scope, openExternally } from "resource://zenapp/modules/Routing.sys.mjs";
 import { getLocale, setLocale, t } from "resource://zenapp/modules/Strings.sys.mjs";
 import { StyleCatalog, dataSheetURI, featureKey } from "resource://zenapp/modules/Styles.sys.mjs";
 import {
+  APP_PALETTE_PREFIX,
+  CSS_COLORS_KEY,
   CUSTOM_CSS_KEY,
+  DARK_PALETTE_PREFIX,
   MAX_CUSTOM_CSS_BYTES,
   MAX_IMPORT_BYTES,
   MAX_IMPORT_DEPTH,
   compileUserCss,
   importHeader,
   importedFrom,
+  mergePrograms,
+  paletteValues,
   stripImportHeader,
 } from "resource://zenapp/modules/UserCss.sys.mjs";
 import {
@@ -50,8 +57,16 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /** How long a downloaded @import of a custom CSS is used before re-fetching. */
 const IMPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-/** How often the wallpaper colour scheme is checked for changes. */
-const SCHEME_POLL_MS = 2000;
+/**
+ * How often the wallpaper colour scheme is checked for changes. The shell
+ * starts its 300 ms colour change the moment scheme.json is replaced; this
+ * keeps the app within a few frames of it (one stat of the file in use).
+ */
+const SCHEME_POLL_MS = 50;
+/** How often all the candidate scheme files are looked at (which one is in use). */
+const SCHEME_RESCAN_MS = 2000;
+/** The desktop's light/dark switch comes in bursts; one refresh per burst. */
+const LOOK_DEBOUNCE_MS = 40;
 /** sharedData key of the site compatibility fixes (see ZenAppCompatChild). */
 const COMPAT_KEY = "zenapp:compat";
 /** Install progress reaches the studio at most this often. */
@@ -88,6 +103,8 @@ class ZenAppRuntime {
   store = null;
   scope = null;
   palette = null;
+  // The palette's dark tones, for dark-only page themes (== palette when dark).
+  darkPalette = null;
   paletteVariables = {};
   windows = new Set();
   mainWindow = null;
@@ -104,8 +121,15 @@ class ZenAppRuntime {
   _cssImports = {};
   _cssImportsChecked = new Set();
   _cssActor = false;
+  // The program the pages have, and the palette colours it links to (JSON).
+  _cssProgram = null;
+  _cssColorsKey = "{}";
+  // Page themes of the preset: id → CSS text (null when unreadable), id → compile info.
+  _themeTexts = {};
+  _themeInfo = {};
   _schemeStamp = null;
   _schemeTimer = null;
+  _lookTimer = null;
   _observers = [];
   _pendingAction = null;
   _widevinePromise = null;
@@ -141,11 +165,11 @@ class ZenAppRuntime {
   get definition() {
     return this.store.definition;
   }
-  /** Webappok, the app manager, rather than a web app. */
+  /** Web Apps, the app manager, rather than a web app. */
   get isManager() {
     return this.store?.config.role === "manager";
   }
-  /** Webappok's link to the zen-app CLI. */
+  /** Web Apps' link to the zen-app CLI. */
   get manager() {
     this._manager ??= new Manager(this);
     return this._manager;
@@ -165,17 +189,20 @@ class ZenAppRuntime {
     } catch (error) {
       console.error("zen-app: cannot name the app", error);
     }
-    setLocale(this.store.config.locale || Services.locale.appLocaleAsBCP47);
+    setLocale(this.store.config.locale || "en");
     this.scope = new Scope(this.store.definition);
-    applyPrefs(settingsToPrefs(this.settings, this.store.config));
+    applyPrefs(effectivePrefs(this.settings, this.store.config));
     this.#applyPermissions();
     const catalog = this.store.config.zenInternet || {};
-    // Webappok (the manager) shows its own page: no site styles, CSS or media.
+    // Web Apps (the manager) shows its own page: no site styles, CSS or media.
     const site = !this.isManager;
     this.styles = site && catalog.path ? await StyleCatalog.load(catalog.path, catalog) : new StyleCatalog({});
     if (site) {
       this.#registerCssActor();
+      await this.#loadPageThemes();
       await this.#reloadCustomCss();
+      // Imports downloaded earlier: no flash of an unstyled theme.
+      await this.#loadCssImports({ network: false });
       await this.#setupCompat();
     }
     this.#registerCommandLine();
@@ -185,6 +212,7 @@ class ZenAppRuntime {
       this.#refreshCssImports();
     }
     this.#watchScheme();
+    this.#observe("look-and-feel-changed", () => this.#lookChanged());
     this._pendingAction = await this.store.takePendingAction();
     this.#observeWindows();
     if (site) {
@@ -215,6 +243,7 @@ class ZenAppRuntime {
       lazy.clearInterval(this._schemeTimer);
       this._schemeTimer = null;
     }
+    lazy.clearTimeout(this._lookTimer);
     if (this._addonListener) {
       try {
         lazy.AddonManager.removeAddonListener(this._addonListener);
@@ -235,6 +264,7 @@ class ZenAppRuntime {
     }
     try {
       Services.ppmm.sharedData.delete(CUSTOM_CSS_KEY);
+      Services.ppmm.sharedData.delete(CSS_COLORS_KEY);
       Services.ppmm.sharedData.delete(COMPAT_KEY);
       Services.ppmm.sharedData.flush();
     } catch {
@@ -501,7 +531,7 @@ class ZenAppRuntime {
 
   openSettings(win) {
     if (this.isManager) {
-      // Webappok has no settings of its own; each app has.
+      // Web Apps has no settings of its own; each app has.
       return;
     }
     const target = win && !win.closed ? win : this.mainWindow?.win;
@@ -593,15 +623,18 @@ class ZenAppRuntime {
   async updateSettings(patch) {
     const before = { ...this.settings };
     const settings = await this.store.updateSettings(patch);
-    applyPrefs(settingsToPrefs(settings, this.store.config));
+    applyPrefs(effectivePrefs(settings, this.store.config));
     this.#applyPermissions();
     if (
       before.appearance !== settings.appearance ||
+      before.colorScheme !== settings.colorScheme ||
       before.zenInternet !== settings.zenInternet ||
       before.customCss !== settings.customCss ||
       JSON.stringify(before.disabledFeatures || []) !== JSON.stringify(settings.disabledFeatures || [])
     ) {
       this.#registerStyles();
+      // A page theme switched on may still need its imports.
+      this.#refreshCssImports();
     }
     if (
       before.palette !== settings.palette ||
@@ -631,24 +664,41 @@ class ZenAppRuntime {
     }
   }
 
-  async refreshPalette() {
+  /**
+   * Resolve the palette again and hand it out. `since`: when the wallpaper
+   * scheme changed (ms), so the pages' colour change keeps pace with the shell's.
+   */
+  async refreshPalette({ since = null } = {}) {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     const systemDark = win
       ? win.matchMedia("(prefers-color-scheme: dark)").matches
       : Services.appinfo.chromeColorSchemeIsDark ?? true;
-    this.palette = await resolvePalette(
-      this.settings,
-      this.definition.accent || "#7b6cff",
-      this.store.config.schemePaths || [],
-      systemDark
-    );
+    const accent = this.definition.accent || "#7b6cff";
+    const schemePaths = this.store.config.schemePaths || [];
+    this.palette = await resolvePalette(this.settings, accent, schemePaths, systemDark);
+    // Dark page themes stay dark on a light wallpaper: its hues, in dark tones.
+    const needsDark = (this.store.config.pageThemes || []).some(theme => theme.scheme === "dark");
+    this.darkPalette =
+      this.palette.dark || !needsDark
+        ? this.palette
+        : await resolvePalette({ ...this.settings, colorScheme: "dark" }, accent, schemePaths, true);
     this.paletteVariables = paletteToCSSVariables(this.palette);
     for (const appWindow of this.windows) {
       appWindow.applySettings();
     }
-    // A theme with a Caelestia colour block follows the new colours too.
-    this.#publishCustomCss();
+    // Themes with a Caelestia colour block follow: only their small palette sheet changes.
+    if (this.#publishCssColors(undefined, { since })) {
+      await this.#writeStatus();
+    }
     this.#emit("palette");
+  }
+
+  /** The desktop switched light/dark (or its theme): the palette may follow. */
+  #lookChanged() {
+    lazy.clearTimeout(this._lookTimer);
+    this._lookTimer = lazy.setTimeout(() => {
+      this.refreshPalette().catch(error => console.error("zen-app: palette", error));
+    }, LOOK_DEBOUNCE_MS);
   }
 
   #applyPermissions() {
@@ -818,10 +868,79 @@ class ZenAppRuntime {
     await this.#writeStatus();
   }
 
-  #compileCustomCss() {
-    return compileUserCss(this._customCssText, {
+  /* ---------------------------------------------------- page themes */
+
+  /** The preset's page themes (app.json pageThemes), read from the add-on. */
+  async #loadPageThemes() {
+    for (const theme of this.store.config.pageThemes || []) {
+      if (!/^[a-z0-9-]+\.css$/.test(theme.file || "")) {
+        continue;
+      }
+      try {
+        const response = await fetch(`resource://zenapp/page-themes/${theme.file}`);
+        this._themeTexts[theme.id] = response.ok ? await response.text() : null;
+      } catch (error) {
+        console.error(`zen-app: cannot read the ${theme.id} theme`, error);
+        this._themeTexts[theme.id] = null;
+      }
+    }
+  }
+
+  /** The page themes and whether each applies (for the studio and status). */
+  get pageThemes() {
+    return pageThemeStates(this.store.config, this.settings).map(theme => {
+      const info = this._themeInfo[theme.id];
+      const imports = info?.imports || { pending: [], inlined: [], failed: [] };
+      return {
+        id: theme.id,
+        name: theme.name,
+        author: theme.author,
+        url: theme.url,
+        license: theme.license,
+        scheme: theme.scheme,
+        enabled: theme.enabled,
+        active: theme.active && typeof this._themeTexts[theme.id] === "string",
+        blocked: theme.blocked,
+        // Still downloading (or offline) the theme it builds on.
+        waiting: theme.active && (imports.pending.length > 0 || imports.failed.length > 0),
+      };
+    });
+  }
+
+  setPageTheme(id, enabled) {
+    const key = themeFeatureKey(id);
+    const off = new Set(this.settings.disabledFeatures || []);
+    if (enabled) {
+      off.delete(key);
+    } else {
+      off.add(key);
+    }
+    return this.updateSettings({ disabledFeatures: [...off] });
+  }
+
+  /**
+   * What goes into the pages: the active page themes (coloured by the dark
+   * palette when they are dark-only), then the app's own CSS. `all` also
+   * lists themes that are switched off, so their imports are cached ahead.
+   */
+  #cssSources({ all = false } = {}) {
+    const sources = [];
+    for (const theme of pageThemeStates(this.store.config, this.settings)) {
+      const text = this._themeTexts[theme.id];
+      if (typeof text === "string" && (all || theme.active)) {
+        sources.push({ kind: "theme", id: theme.id, text, prefix: theme.scheme === "dark" ? DARK_PALETTE_PREFIX : APP_PALETTE_PREFIX });
+      }
+    }
+    if (this._customCssText !== null && this.customCss.state === "loaded") {
+      sources.push({ kind: "user", text: this._customCssText, prefix: APP_PALETTE_PREFIX });
+    }
+    return sources;
+  }
+
+  #compileSource(source) {
+    return compileUserCss(source.text, {
       ...this.#customCssScope(),
-      colors: paletteColors(this.palette),
+      palettePrefix: source.prefix,
       imports: this._cssImports,
     });
   }
@@ -846,43 +965,92 @@ class ZenAppRuntime {
   }
 
   /**
-   * Compile the custom CSS and hand it to the pages: sharedData for pages
-   * that load from now on, a message for the ones already open. Returns true
-   * when what the pages get changed.
+   * Compile the page themes and the custom CSS and hand them to the pages:
+   * sharedData for pages that load from now on, a message for the ones
+   * already open. Returns true when what the pages get changed.
    */
   #publishCustomCss() {
-    let program = null;
-    if (this._customCssText !== null && this.customCss.state === "loaded") {
-      const { program: compiled, info } = this.#compileCustomCss();
+    const programs = [];
+    for (const source of this.#cssSources()) {
+      const { program, info } = this.#compileSource(source);
+      if (source.kind === "theme") {
+        this._themeInfo[source.id] = info;
+        programs.push(program);
+        continue;
+      }
       const { state, bytes, fileName } = this.customCss;
       this.customCss = { state, bytes, fileName, ...info };
       if (this.settings.customCss !== false) {
-        program = compiled;
+        programs.push(program);
       }
     }
+    const program = mergePrograms(programs);
+    this._cssProgram = program;
+    const colors = this.#paletteValues();
     const key = program ? JSON.stringify(program) : "";
     if (key === this._customCssKey) {
-      return false;
+      return this.#publishCssColors(colors);
     }
     this._customCssKey = key;
+    this._cssColorsKey = JSON.stringify(colors);
     try {
       Services.ppmm.sharedData.set(CUSTOM_CSS_KEY, program);
+      Services.ppmm.sharedData.set(CSS_COLORS_KEY, colors);
       Services.ppmm.sharedData.flush();
     } catch (error) {
       console.error("zen-app: cannot publish the custom CSS", error);
     }
+    // Program and colours together: a theme never shows its fallback colours.
+    this.#sendToPages("ZenAppCss:update", { program, colors });
+    return true;
+  }
+
+  /** The palette colours the published program links to (see paletteValues). */
+  #paletteValues() {
+    const app = paletteColors(this.palette);
+    const dark = paletteColors(this.darkPalette || this.palette);
+    const sets = (this._cssProgram?.palette || []).map(({ prefix, names }) => ({
+      prefix,
+      names,
+      colors: prefix === DARK_PALETTE_PREFIX ? dark : app,
+    }));
+    // The summary of the app's own CSS: how many of its colours follow the wallpaper.
+    if (this.customCss.state === "loaded" && this.customCss.palette) {
+      const names = this.customCss.palette.names || [];
+      this.customCss.palette = { ...this.customCss.palette, applied: names.filter(name => app?.[name]).length };
+    }
+    return paletteValues(sets);
+  }
+
+  /** Give the pages new colours (they animate to them; the theme stays). True when they changed. */
+  #publishCssColors(colors = this.#paletteValues(), { since = null } = {}) {
+    const key = JSON.stringify(colors);
+    if (key === this._cssColorsKey) {
+      return false;
+    }
+    this._cssColorsKey = key;
+    try {
+      Services.ppmm.sharedData.set(CSS_COLORS_KEY, colors);
+      Services.ppmm.sharedData.flush();
+    } catch (error) {
+      console.error("zen-app: cannot publish the page colours", error);
+    }
+    this.#sendToPages("ZenAppCss:colors", { colors, since });
+    return true;
+  }
+
+  #sendToPages(name, data) {
     for (const appWindow of this.windows) {
       for (const browser of appWindow.gBrowser?.browsers || []) {
         for (const context of browser.browsingContext?.getAllBrowsingContextsInSubtree() || []) {
           try {
-            context.currentWindowGlobal?.getActor("ZenAppCss").sendAsyncMessage("ZenAppCss:update", program);
+            context.currentWindowGlobal?.getActor("ZenAppCss").sendAsyncMessage(name, data);
           } catch {
             // no page actor here (chrome page, about:blank, closing)
           }
         }
       }
     }
-    return true;
   }
 
   /* ------------------------------------------- custom CSS: @imports */
@@ -904,17 +1072,21 @@ class ZenAppRuntime {
   }
 
   /**
-   * Fill this._cssImports for the current custom CSS (nested imports too):
-   * from the cache, and with `network` also downloading missing or old ones.
+   * Fill this._cssImports for the page themes and the custom CSS (nested
+   * imports too): from the cache, and with `network` also downloading
+   * missing or old ones.
    */
   async #loadCssImports({ network }) {
-    if (this._customCssText === null) {
+    const sources = this.#cssSources({ all: true });
+    if (!sources.length) {
       return false;
     }
     let changed = false;
     for (let round = 0; round <= MAX_IMPORT_DEPTH; round++) {
-      const { info } = this.#compileCustomCss();
-      const wanted = info.imports.pending.concat(network ? info.imports.inlined : []);
+      const infos = sources.map(source => this.#compileSource(source).info);
+      const wanted = [
+        ...new Set(infos.flatMap(info => info.imports.pending.concat(network ? info.imports.inlined : []))),
+      ];
       const todo = wanted.filter(url => !(network ? this._cssImportsChecked.has(url) : url in this._cssImports));
       if (!todo.length) {
         break;
@@ -984,25 +1156,38 @@ class ZenAppRuntime {
     if (!paths.length || this._schemeTimer) {
       return;
     }
+    const stampOf = path =>
+      IOUtils.stat(path).then(
+        stat => ({ stamp: `${stat.lastModified}:${stat.size}`, modified: stat.lastModified }),
+        () => null
+      );
     let busy = false;
+    let active = null; // index of the scheme file in use: the first that exists
+    let scanned = 0;
     const check = async () => {
       if (busy) {
         return;
       }
       busy = true;
       try {
-        const parts = await Promise.all(
-          paths.map(path =>
-            IOUtils.stat(path).then(
-              stat => `${stat.lastModified}:${stat.size}`,
-              () => "-"
-            )
-          )
-        );
-        const stamp = parts.join("|");
+        let found;
+        if (active === null || Date.now() - scanned > SCHEME_RESCAN_MS) {
+          scanned = Date.now();
+          const stats = await Promise.all(paths.map(stampOf));
+          const index = stats.findIndex(Boolean);
+          active = index >= 0 ? index : null;
+          found = active === null ? null : stats[active];
+        } else {
+          found = await stampOf(paths[active]);
+          if (!found) {
+            active = null; // gone: the next check looks at all of them
+          }
+        }
+        const stamp = `${active}|${found?.stamp ?? "-"}`;
         if (this._schemeStamp !== null && stamp !== this._schemeStamp && this.settings.palette === "system") {
           this._schemeStamp = stamp;
-          await this.refreshPalette();
+          // The shell began its colour change when the file was replaced.
+          await this.refreshPalette({ since: found?.modified ?? null });
         }
         this._schemeStamp = stamp;
       } catch (error) {
@@ -1639,6 +1824,7 @@ class ZenAppRuntime {
       glass: { choice: this.glassChoice, sources: this.glassSources, tint: this.tint },
       styleSites: this.styleSites(),
       stylesCatalog: { origin: this.store.config.zenInternet?.origin, sites: this.store.config.zenInternet?.sites },
+      pageThemes: this.pageThemes,
       customCss: { ...this.customCss, enabled: this.settings.customCss !== false, path: this.customCssPath },
       widevine: { ...this.widevine },
       adblock: { ...this.adblock, enabled: this.settings.adblock !== false, id: ADBLOCK.id, name: ADBLOCK.name },
@@ -1725,6 +1911,10 @@ class ZenAppRuntime {
         compat: Object.fromEntries(
           this.#compatFixes.map(([id]) => [id, this.settings.webcompat !== false && this._compatAvailable[id] === true])
         ),
+        pageThemes: Object.fromEntries(
+          this.pageThemes.map(theme => [theme.id, { active: theme.active, waiting: theme.waiting, blocked: theme.blocked }])
+        ),
+        palette: { source: this.palette?.source || null, dark: this.palette?.dark ?? null, themeDark: this.darkPalette?.dark ?? null },
         customCss: {
           state: this.customCss.state,
           enabled: this.settings.customCss !== false,

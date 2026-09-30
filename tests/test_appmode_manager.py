@@ -49,7 +49,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(profile, prepared.render.profile)
         config = json.loads((profile / "zen-app" / "app.json").read_text())
         self.assertEqual(("manager", "zen-apps", "zen-apps"), (config["role"], config["appId"], config["desktopId"]))
-        self.assertEqual("Webappok", config["definition"]["name"])
+        self.assertEqual("Web Apps", config["definition"]["name"])
         settings = config["definition"]["settings"]
         self.assertEqual((False, False, False, False), (settings["adblock"], settings["zenInternet"], settings["customCss"], settings["media"]))
         self.assertTrue(config["definition"]["onboarding"]["completed"])
@@ -63,7 +63,9 @@ class ManagerTests(unittest.TestCase):
     def test_launcher_and_icon(self):
         manager.prepare_manager(self.paths, self.zen)
         entry = self.paths.manager_desktop_path().read_text()
-        self.assertIn("Name=Web Apps\nName[hu]=Webappok\n", entry)
+        # English only, even on a Hungarian desktop (the test runs with LANG=hu_HU).
+        self.assertIn("Name=Web Apps\nGenericName=Web app manager\n", entry)
+        self.assertNotIn("[hu]", entry)
         self.assertIn(f'Exec="{self.paths.shim_path()}" "studio"\n', entry)
         self.assertIn(f'Exec="{self.paths.shim_path()}" "studio" "--new"\n', entry)
         self.assertIn("StartupWMClass=zen-apps\n", entry)

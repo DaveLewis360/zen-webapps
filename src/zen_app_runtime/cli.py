@@ -307,7 +307,7 @@ def _add_app_mode_commands(commands) -> None:
 
     commands.add_parser("setup", help="app mode: install the zen-app launcher shim and refresh all apps")
 
-    studio = commands.add_parser("studio", help="app mode: open Webappok, the app manager (focuses it when open)")
+    studio = commands.add_parser("studio", help="app mode: open Web Apps, the app manager (focuses it when open)")
     studio.add_argument("--new", action="store_true", help="go straight to creating a new app")
     _add_json(studio)
 

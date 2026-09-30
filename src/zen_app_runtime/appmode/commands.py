@@ -351,7 +351,7 @@ def cmd_refresh(app_id: str | None, *, as_json: bool = False, out: TextIO | None
 
 
 def _refresh_manager(paths: AppModePaths, zen: ZenRuntime, *, as_json: bool, out: TextIO) -> dict:
-    """Webappok is refreshed with the apps; it has no library definition."""
+    """Web Apps is refreshed with the apps; it has no library definition."""
     from .manager import MANAGER_ID, manager_running, prepare_manager
 
     if manager_running(paths) is not None:
@@ -374,7 +374,7 @@ def cmd_setup(*, out: TextIO | None = None, paths: AppModePaths | None = None, z
         out.write(f"  note: {shim.parent} is not on PATH\n")
     zen = zen or find_zen()
     out.write(f"Runtime: {zen.label} at {zen.binary}\n")
-    # Refreshing everything also renders Webappok and installs its launcher.
+    # Refreshing everything also renders Web Apps and installs its launcher.
     cmd_refresh(None, out=out, paths=paths, zen=zen)
     return 0
 

@@ -117,6 +117,9 @@ def initial_roles(accent: str, palette: str, color_scheme: str) -> dict[str, str
                 continue
             colours = data.get("colours") or data.get("colors") or {}
             mode = data.get("mode")
+            if color_scheme == "system" and mode in ("dark", "light"):
+                # The scheme's own mode, as the runtime and the Caelestia shell use it.
+                want_dark = mode == "dark"
             if mode and (mode == "dark") != want_dark:
                 continue
             roles = {}

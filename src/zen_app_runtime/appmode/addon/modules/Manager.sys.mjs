@@ -1,4 +1,4 @@
-/* zen-app-runtime app mode: Webappok's link to the zen-app CLI.
+/* zen-app-runtime app mode: Web Apps' link to the zen-app CLI.
  *
  * The manager never edits an app itself: every action is a `zen-app … --json`
  * call, so the CLI stays the single source of truth for definitions,

@@ -17,8 +17,11 @@
  *    runtime); the others are listed as pending. Relative url()s of imported
  *    files are made absolute.
  *  - The Caelestia colour block (between /* BEGIN CAELESTIA COLORS * / and
- *    /* END CAELESTIA COLORS * /, as used by Vencord/Vesktop themes) is filled
- *    with the current wallpaper colours.
+ *    /* END CAELESTIA COLORS * /, as used by Vencord/Vesktop themes) is linked
+ *    to the wallpaper palette: `--primary: #hex` becomes
+ *    `--primary: var(--zenapp-c-primary, #hex)`, and paletteSheet() gives the
+ *    page those colours as registered properties. A new wallpaper then only
+ *    swaps that small sheet, and the page animates to it like the shell.
  *  - The file is rebuilt block by block with balanced braces, so no chunk can
  *    leak into another.
  * Pure JavaScript without Gecko APIs, so node can unit-test it.
@@ -29,6 +32,13 @@ export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 export const MAX_IMPORT_DEPTH = 3;
 /** sharedData key the parent publishes the compiled program under. */
 export const CUSTOM_CSS_KEY = "zenapp:customCss";
+/** sharedData key of the palette sheet (paletteSheet) for that program. */
+export const CSS_COLORS_KEY = "zenapp:customCssColors";
+/** Palette properties: the app's palette, and its dark tones (dark page themes). */
+export const APP_PALETTE_PREFIX = "--zenapp-c-";
+export const DARK_PALETTE_PREFIX = "--zenapp-cd-";
+/** M3 Expressive "slow effects": how the Caelestia shell changes its colours. */
+export const PALETTE_TRANSITION = { duration: 300, easing: "cubic-bezier(0.34, 0.88, 0.34, 1)" };
 
 const IMPORT_MARKER = /^\/\* zen-app: imported from "([^"\n]*)" \*\/\r?\n?/;
 const DOCUMENT_RULES = new Set(["-moz-document", "document"]);
@@ -217,31 +227,63 @@ function cssString(value) {
 /* ------------------------------------------------------ palette block */
 
 /**
- * Fill the Caelestia colour blocks with `colors` ({primary: "#rrggbb", ...}).
- * Only `--name: #hex;` declarations inside the markers change.
+ * Link the Caelestia colour blocks to the palette: every `--name: #hex`
+ * inside the markers becomes `--name: var(<prefix>name, #hex)`, so the
+ * written colour stays the fallback. Returns {text, blocks, names}.
  */
-export function applyPalette(src, colors) {
+export function linkPalette(src, prefix = APP_PALETTE_PREFIX) {
   let blocks = 0;
-  let applied = 0;
+  const names = new Set();
   const text = String(src).replace(PALETTE_BLOCK, (all, begin, body, end) => {
     blocks++;
-    if (!colors) {
-      return all;
-    }
-    const filled = body.replace(
-      /(--([A-Za-z][\w-]*)\s*:\s*)#[0-9a-fA-F]{3,8}(?=\s*(?:!\s*important\s*)?[;}])/g,
-      (declaration, head, name) => {
-        const value = colors[name];
-        if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
-          return declaration;
-        }
-        applied++;
-        return head + value.toLowerCase();
+    const linked = body.replace(
+      /(--([A-Za-z][\w-]*)\s*:\s*)(#[0-9a-fA-F]{3,8})(?=\s*(?:!\s*important\s*)?[;}])/g,
+      (declaration, head, name, hex) => {
+        names.add(name);
+        return `${head}var(${prefix}${name}, ${hex})`;
       }
     );
-    return begin + filled + end;
+    return begin + linked + end;
   });
-  return { text, blocks, applied };
+  return { text, blocks, names: [...names] };
+}
+
+/**
+ * The page's palette: the linked colours that have a value, as
+ * {"--zenapp-c-primary": "#rrggbb"}. sets: [{prefix, names, colors}],
+ * colors being {name: "#rrggbb"}; the first value of a property wins.
+ */
+export function paletteValues(sets) {
+  const values = {};
+  for (const { prefix, names, colors } of sets || []) {
+    if (!/^--[A-Za-z][\w-]*$/.test(String(prefix))) {
+      continue;
+    }
+    for (const name of names || []) {
+      const value = colors?.[name];
+      const property = `${prefix}${name}`;
+      if (property in values || !/^[A-Za-z][\w-]*$/.test(String(name)) || typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
+        continue;
+      }
+      values[property] = value.toLowerCase();
+    }
+  }
+  return values;
+}
+
+/**
+ * The palette sheet: those colours as registered <color> properties, so the
+ * page can animate them when the wallpaper changes (see ZenAppCssChild).
+ * They are registered only here: without this sheet the fallback colour
+ * written in the theme applies. "" when there is nothing to set.
+ */
+export function paletteSheet(values) {
+  const entries = Object.entries(values || {});
+  if (!entries.length) {
+    return "";
+  }
+  const registrations = entries.map(([property]) => `@property ${property} { syntax: "<color>"; inherits: true; initial-value: transparent; }`);
+  return [...registrations, `:root {\n${entries.map(([property, value]) => `  ${property}: ${value};`).join("\n")}\n}`].join("\n") + "\n";
 }
 
 /* ------------------------------------------------------------ imports */
@@ -657,11 +699,12 @@ export function stripImportHeader(src) {
 /**
  * Compile an uploaded CSS for an app.
  * hosts: the app's host patterns; aliases: {oldDomain: [url prefixes it moved
- * to]}; startUrl: used to judge regexp() sections; colors: the palette for
- * the Caelestia colour block; imports: {https url: fetched text ("" = failed)}.
+ * to]}; startUrl: used to judge regexp() sections; palettePrefix: the palette
+ * the Caelestia colour block follows (APP_ or DARK_PALETTE_PREFIX); imports:
+ * {https url: fetched text ("" = failed)}.
  * Returns {program, info}; program is null when there is nothing to apply.
  */
-export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "", colors = null, imports = {} } = {}) {
+export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "", palettePrefix = APP_PALETTE_PREFIX, imports = {} } = {}) {
   const patterns = [...new Set(hosts.map(h => normalizeHost(h)).filter(h => /^(\*\.)?[a-z0-9.-]+$/.test(h)))];
   const ctx = {
     hosts: [...new Set(patterns.map(h => h.replace(/^\*\./, "")))],
@@ -692,7 +735,7 @@ export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "",
     section: 0,
   };
   const raw = terminate(stripImportHeader(String(input ?? "")).replace(/^\uFEFF/, "").replace(/\u0000/g, "\uFFFD"));
-  const palette = applyPalette(raw, colors);
+  const palette = linkPalette(raw, palettePrefix);
   const src = palette.text;
   const meta = userStyleMeta(src);
   if (meta.preprocessor && !/^(default|uso)$/i.test(meta.preprocessor)) {
@@ -720,14 +763,47 @@ export function compileUserCss(input, { hosts = [], aliases = {}, startUrl = "",
     elsewhere: [...ctx.elsewhere].slice(0, 6),
     aliases: [...ctx.aliasesUsed],
     imports: { pending: [...ctx.pending], inlined: [...ctx.inlined], failed: [...ctx.failed] },
-    palette: { blocks: palette.blocks, applied: palette.applied },
+    palette: { blocks: palette.blocks, names: palette.names },
   };
   const prefixes = [...new Set(Object.values(ctx.aliases).flat())];
   if (!(patterns.length || prefixes.length) || !ctx.chunks.length) {
     return { program: null, info };
   }
   return {
-    program: { version: 1, scope: { hosts: patterns, prefixes }, namespaces: [...ctx.namespaces], chunks: ctx.chunks },
+    program: {
+      version: 1,
+      scope: { hosts: patterns, prefixes },
+      namespaces: [...ctx.namespaces],
+      chunks: ctx.chunks,
+      palette: palette.names.length ? [{ prefix: palettePrefix, names: palette.names }] : [],
+    },
     info,
+  };
+}
+
+/** One program of several, in order (page themes first, then the app's own CSS). */
+export function mergePrograms(programs) {
+  const list = (programs || []).filter(Boolean);
+  if (list.length < 2) {
+    return list[0] || null;
+  }
+  const hosts = new Set();
+  const prefixes = new Set();
+  const namespaces = new Set();
+  const chunks = [];
+  const palette = [];
+  for (const program of list) {
+    program.scope.hosts.forEach(host => hosts.add(host));
+    program.scope.prefixes.forEach(prefix => prefixes.add(prefix));
+    program.namespaces.forEach(namespace => namespaces.add(namespace));
+    chunks.push(...program.chunks);
+    palette.push(...(program.palette || []));
+  }
+  return {
+    version: 1,
+    scope: { hosts: [...hosts], prefixes: [...prefixes] },
+    namespaces: [...namespaces],
+    chunks,
+    palette,
   };
 }
