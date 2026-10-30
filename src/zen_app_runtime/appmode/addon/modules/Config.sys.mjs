@@ -15,6 +15,7 @@ export const SETTINGS_ENUMS = {
 };
 export const BOOLEAN_SETTINGS = [
   "notifications", "media", "autoplay", "drm", "findInPage", "developer", "zenInternet", "customCss", "adblock", "webcompat",
+  "tray", "background", "unreadBadge",
 ];
 const FEATURE_KEY = /^[^|\u0000-\u001f\u007f]{1,120}\|[^\u0000-\u001f\u007f]{1,120}$/;
 export const TINT_RANGE = [0, 90];

@@ -54,6 +54,9 @@ def manager_definition() -> AppDefinition:
             custom_css=False,
             adblock=False,
             webcompat=False,
+            tray=False,
+            background=False,
+            unread_badge=False,
         ),
         onboarding_completed=True,
     )

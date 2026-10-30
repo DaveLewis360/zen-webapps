@@ -2,7 +2,9 @@
  *
  * Every browser window of an app profile becomes an app window: no browser
  * shortcuts, a reduced context menu, the page title as window title, centred
- * permission prompts and link routing (main window only).
+ * permission prompts and link routing (main window only). The main window
+ * also reports its page title (unread counts) and, when the app runs in the
+ * background, hides instead of closing.
  */
 
 import { menuLabels, t } from "resource://zenapp/modules/Strings.sys.mjs";
@@ -50,6 +52,8 @@ export class AppWindow {
   #listeners = [];
   #tabsListener = null;
   #routedRecently = new Map();
+  #hidden = false;
+  #originalOnClose = null;
 
   constructor(app, win, { main }) {
     this.app = app;
@@ -87,6 +91,13 @@ export class AppWindow {
     if (this.main) {
       this.appTab = this.gBrowser.selectedTab;
       this.#installRouting();
+      this.#installCloseToBackground();
+      // The page title carries the unread count ("(3) Discord | …").
+      this.#on(this.gBrowser.tabContainer, "TabAttrModified", event => {
+        if (event.target === this.appTab && event.detail?.changed?.includes("label")) {
+          this.app.appTitleChanged(this);
+        }
+      });
     }
     // Returning to the app (e.g. from an editor) picks up CSS edits.
     this.#on(this.win, "activate", () => this.app.windowActivated().catch(console.error));
@@ -94,6 +105,14 @@ export class AppWindow {
   }
 
   teardown() {
+    if (this.#originalOnClose !== null) {
+      try {
+        this.win.onclose = this.#originalOnClose;
+      } catch {
+        // window already gone
+      }
+      this.#originalOnClose = null;
+    }
     this.#keyObserver?.disconnect();
     this.#keyObserver = null;
     if (this.#tabsListener) {
@@ -301,7 +320,74 @@ export class AppWindow {
   }
 
   closeWindow() {
+    if (this.main && this.app.keepsRunningInBackground) {
+      this.hideToBackground();
+      return;
+    }
     this.win.close();
+  }
+
+  /* ---------------------------------------------------- background */
+
+  /**
+   * The window's close button (and the compositor's close) runs
+   * window.onclose (WindowIsClosing): an app running in the background hides
+   * its window instead, before the browser asks the page whether it may
+   * unload.
+   */
+  #installCloseToBackground() {
+    const original = this.win.onclose;
+    this.#originalOnClose = original;
+    this.win.onclose = event => {
+      if (this.app.keepsRunningInBackground) {
+        this.hideToBackground();
+        return false;
+      }
+      return typeof original === "function" ? original.call(this.win, event) : true;
+    };
+  }
+
+  get #baseWindow() {
+    return this.win.docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
+  }
+
+  /** Hidden in the background (tray), as opposed to shown. */
+  get hidden() {
+    return this.#hidden;
+  }
+
+  hideToBackground() {
+    if (this.#hidden || this.win.closed) {
+      return;
+    }
+    if (this.win.document.fullscreenElement || this.win.fullScreen) {
+      this.win.fullScreen = false;
+    }
+    // The window is unmapped, not closed: the page keeps running.
+    this.#baseWindow.visibility = false;
+    this.#hidden = true;
+    this.app.windowVisibilityChanged(this);
+  }
+
+  showFromBackground() {
+    if (this.win.closed) {
+      return;
+    }
+    if (this.#hidden) {
+      this.#baseWindow.visibility = true;
+      this.#hidden = false;
+      this.app.windowVisibilityChanged(this);
+    }
+    this.win.focus();
+  }
+
+  /** The app tab's page title, as the site sets it. */
+  get pageTitle() {
+    try {
+      return (this.appTab?.linkedBrowser?.contentTitle || "").trim();
+    } catch {
+      return "";
+    }
   }
 
   /* -------------------------------------------------------- context menu */

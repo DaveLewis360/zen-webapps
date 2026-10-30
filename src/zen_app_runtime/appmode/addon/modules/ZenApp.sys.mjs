@@ -4,6 +4,8 @@ import { AppWindow, MANAGER_URL, STUDIO_URL } from "resource://zenapp/modules/Ap
 import { applyBrand, currentBrandName, removeBrand } from "resource://zenapp/modules/Brand.sys.mjs";
 import { Manager } from "resource://zenapp/modules/Manager.sys.mjs";
 import { MediaBridge } from "resource://zenapp/modules/Mpris.sys.mjs";
+import { TrayBridge } from "resource://zenapp/modules/Tray.sys.mjs";
+import { itemCategory, unreadFromTitle } from "resource://zenapp/modules/TrayModel.sys.mjs";
 import {
   ConfigStore,
   applyPrefs,
@@ -47,6 +49,7 @@ import {
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
   GMPInstallManager: "resource://gre/modules/GMPInstallManager.sys.mjs",
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
@@ -152,6 +155,10 @@ class ZenAppRuntime {
   // The app's own MPRIS media player (Mpris.sys.mjs).
   mpris = { state: "off" };
   _media = null;
+  // The tray icon and unread badge (Tray.sys.mjs).
+  _tray = null;
+  _trayError = null;
+  unread = { count: 0, more: false, dot: false };
 
   get id() {
     return this.store.config.appId;
@@ -168,6 +175,10 @@ class ZenAppRuntime {
   /** Web Apps, the app manager, rather than a web app. */
   get isManager() {
     return this.store?.config.role === "manager";
+  }
+  /** Closing the main window hides it instead (the app keeps running). */
+  get keepsRunningInBackground() {
+    return !this.isManager && this.settings?.background === true;
   }
   /** Web Apps' link to the zen-app CLI. */
   get manager() {
@@ -232,6 +243,7 @@ class ZenAppRuntime {
 
   shutdown() {
     this.#stopMediaPlayer();
+    this.#stopTray();
     for (const { topic, observer } of this._observers.splice(0)) {
       try {
         Services.obs.removeObserver(observer, topic);
@@ -371,6 +383,188 @@ class ZenAppRuntime {
     this._media = null;
   }
 
+  /* ----------------------------------------------- tray and badge */
+
+  get trayState() {
+    if (this._tray) {
+      return this._tray.state;
+    }
+    return this._trayError ? { state: "failed", error: this._trayError } : { state: "off" };
+  }
+
+  /** A document to draw the tray icon with (any window of the app). */
+  get drawingDocument() {
+    const win = this.mainWindow?.win;
+    if (win && !win.closed) {
+      return win.document;
+    }
+    return Services.wm.getMostRecentWindow("navigator:browser")?.document || null;
+  }
+
+  #trayLabels() {
+    return {
+      show: t("tray.show"),
+      hide: t("tray.hide"),
+      settings: t("tray.settings"),
+      quit: t("tray.quit"),
+      unread: t("tray.unread"),
+      unreadDot: t("tray.unreadDot"),
+    };
+  }
+
+  /** Start, restart or stop the tray to match the settings. */
+  #syncTray() {
+    if (this.isManager || !this.mainWindow?.ready) {
+      return;
+    }
+    const item = this.settings.tray !== false;
+    const badge = this.settings.unreadBadge !== false;
+    const running = this._tray?.service;
+    if (running && running.item === item && running.state.badge === badge) {
+      return;
+    }
+    this.#stopTray();
+    if (!item && !badge) {
+      return;
+    }
+    const icon = this.store.config.icon || {};
+    try {
+      this._tray = new TrayBridge(this, {
+        id: this.store.config.desktopId || `zen-app-${this.id}`,
+        title: this.name,
+        category: itemCategory(this.definition.categories),
+        labels: this.#trayLabels(),
+        iconURL: icon.file ? PathUtils.toFileURI(icon.file) : null,
+        accent: this.definition.accent,
+        item,
+        badge,
+      });
+      this._tray.start({ visible: !this.mainWindow?.hidden });
+      this._trayError = null;
+      this._tray.setUnread(badge ? this.unread : { count: 0 });
+      if (!this._trayObserved) {
+        this._trayObserved = true;
+        // Close it while JS still runs: GLib must not call into a shut-down engine.
+        this.#observe("quit-application", () => this.#stopTray());
+      }
+    } catch (error) {
+      console.error("zen-app: the tray icon cannot start", error);
+      this._tray = null;
+      this._trayError = String(error?.message || error);
+    }
+  }
+
+  #stopTray() {
+    try {
+      this._tray?.stop();
+    } catch (error) {
+      console.error("zen-app: tray", error);
+    }
+    this._tray = null;
+  }
+
+  /** The main window's page title changed: the unread count may have too. */
+  appTitleChanged(appWindow) {
+    if (appWindow !== this.mainWindow) {
+      return;
+    }
+    const unread = unreadFromTitle(appWindow.pageTitle);
+    this.unread = unread;
+    if (this.settings.unreadBadge !== false) {
+      this._tray?.setUnread(unread);
+    }
+  }
+
+  windowVisibilityChanged(appWindow) {
+    if (appWindow === this.mainWindow) {
+      this._tray?.setVisible(!appWindow.hidden);
+      this.#emit("visibility");
+    }
+  }
+
+  /** Bring the main window back (from the background) and to the front. */
+  showMainWindow() {
+    const appWindow = this.mainWindow;
+    if (!appWindow || appWindow.win.closed) {
+      return null;
+    }
+    const wasHidden = appWindow.hidden;
+    appWindow.showFromBackground();
+    // A shown window is mapped again and gets the focus; one that stayed
+    // visible may be on another workspace, where only the compositor can
+    // bring the user to it.
+    if (!wasHidden && Services.focus.activeWindow !== appWindow.win) {
+      this.#focusThroughCompositor().catch(() => {});
+    }
+    return appWindow.win;
+  }
+
+  async #focusThroughCompositor() {
+    if (!Services.env.get("HYPRLAND_INSTANCE_SIGNATURE")) {
+      return false;
+    }
+    let hyprctl;
+    try {
+      hyprctl = await lazy.Subprocess.pathSearch("hyprctl");
+    } catch {
+      return false;
+    }
+    const windowClass = this.store.config.desktopId || `zen-app-${this.id}`;
+    // Same two forms as the launcher: Lua config first, then the classic one.
+    for (const args of [
+      ["dispatch", `hl.dsp.focus({ window = "class:${windowClass}" })`],
+      ["dispatch", "focuswindow", `class:^(${windowClass})$`],
+    ]) {
+      try {
+        const process = await lazy.Subprocess.call({ command: hyprctl, arguments: args, stderr: "stdout" });
+        const output = await process.stdout.readString();
+        await process.wait();
+        if (output.trim().toLowerCase().startsWith("ok")) {
+          return true;
+        }
+      } catch {
+        // try the next form
+      }
+    }
+    return false;
+  }
+
+  /** A tray host (the watcher) appeared or went away. */
+  trayHostChanged() {
+    this.#emit("tray");
+    this.#writeStatus();
+  }
+
+  /** A click in the tray icon or its menu (Tray.sys.mjs). */
+  trayAction(action) {
+    const appWindow = this.mainWindow;
+    switch (action?.type) {
+      case "show":
+        this.showMainWindow();
+        break;
+      case "hide":
+        appWindow?.hideToBackground();
+        break;
+      case "toggle":
+        if (appWindow?.hidden) {
+          this.showMainWindow();
+        } else {
+          appWindow?.hideToBackground();
+        }
+        break;
+      case "settings": {
+        const win = this.showMainWindow();
+        if (win && !this.store.needsOnboarding) {
+          this.openSettings(win);
+        }
+        break;
+      }
+      case "quit":
+        Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
+        break;
+    }
+  }
+
   #observeWindows() {
     const adopt = win => this.#adoptWindow(win);
     this.#observe("browser-window-before-show", adopt);
@@ -425,6 +619,8 @@ class ZenAppRuntime {
       } else if (pending?.action === "open" && pending.url) {
         this.openDeepLink(pending.url);
       }
+      this.#syncTray();
+      this.appTitleChanged(appWindow);
       if (Services.prefs.getBoolPref("zenapp.debug", false)) {
         win.setTimeout(() => this.dumpDebugState(appWindow).catch(console.error), 2500);
       }
@@ -601,11 +797,11 @@ class ZenAppRuntime {
       cmdLine.removeArguments(0, cmdLine.length - 1);
     }
     cmdLine.preventDefault = true;
-    const win = this.mainWindow?.win;
+    // Hidden in the background, it comes back.
+    const win = this.showMainWindow();
     if (!win) {
       return;
     }
-    win.focus();
     const url = openUrl || extra.find(arg => /^https?:\/\//i.test(arg));
     if (url) {
       this.openDeepLink(url);
@@ -653,6 +849,12 @@ class ZenAppRuntime {
     }
     if (before.webcompat !== settings.webcompat) {
       this.#publishCompat();
+    }
+    if (before.tray !== settings.tray || before.unreadBadge !== settings.unreadBadge) {
+      this.#syncTray();
+    }
+    if (before.tray !== settings.tray || before.unreadBadge !== settings.unreadBadge || before.background !== settings.background) {
+      await this.#writeStatus();
     }
     this.#emit("settings");
     return settings;
@@ -1837,6 +2039,8 @@ class ZenAppRuntime {
         available: this._compatAvailable[id] !== false,
         enabled: this.settings.webcompat !== false,
       })),
+      tray: this.isManager ? null : this.trayState,
+      unread: { ...this.unread },
       needsOnboarding: this.store.needsOnboarding,
       versions: {
         addon: this.addonVersion,
@@ -1905,6 +2109,7 @@ class ZenAppRuntime {
         onboardingCompleted: !this.store.needsOnboarding,
         brand: currentBrandName(),
         mpris: { ...this.mpris },
+        tray: { ...this.trayState, background: this.keepsRunningInBackground, badge: this.settings.unreadBadge !== false },
         widevine: this.widevine.state,
         adblock: { enabled: this.settings.adblock !== false, state: this.adblock.state, version: this.adblock.version || null },
         extensions: this.extensions.map(extension => ({ id: extension.id, version: extension.version, enabled: extension.enabled })),

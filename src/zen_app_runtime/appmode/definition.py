@@ -66,6 +66,12 @@ class AppSettings:
     adblock: bool = True
     # Site compatibility fixes of the preset (e.g. Messenger's encrypted calls).
     webcompat: bool = True
+    # A tray icon (StatusNotifierItem) while the app runs.
+    tray: bool = True
+    # Closing the window keeps the app running; the tray icon or the launcher brings it back.
+    background: bool = False
+    # Unread count from the page title on the tray icon and the launcher (Unity launcher entry).
+    unread_badge: bool = True
 
 
 _SETTINGS_FIELDS = {
@@ -86,6 +92,9 @@ _SETTINGS_FIELDS = {
     "customCss": "custom_css",
     "adblock": "adblock",
     "webcompat": "webcompat",
+    "tray": "tray",
+    "background": "background",
+    "unreadBadge": "unread_badge",
 }
 
 
@@ -344,6 +353,7 @@ def definition_from_preset(
         media=preset.media,
         autoplay=preset.autoplay,
         drm=preset.drm,
+        background=preset.background,
     )
     definition = AppDefinition(
         id=validate_app_id(app_id or preset.key),

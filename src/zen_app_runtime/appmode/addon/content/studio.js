@@ -554,6 +554,7 @@ function permissionsSection() {
       setting("drm", "verified_user"),
       compatRows
     ),
+    runningPanel(),
     // Settings has a tab of its own for these.
     MODE === "settings" ? null : adblockPanel(),
     MODE === "settings" ? null : extensionsPanel(),
@@ -563,6 +564,38 @@ function permissionsSection() {
       row({ iconName: "open_in_new", title: t("permissions.links"), text: t("permissions.links.desc") }),
       row({ iconName: "screen_share", title: t("permissions.screen"), text: t("permissions.screen.desc") })
     )
+  );
+}
+
+/** Tray icon, running in the background and the unread badge. */
+function runningPanel() {
+  const option = (key, iconName, fallback, extra = null) => {
+    const title = t(`permissions.${key}`);
+    const current = () => model.settings[key] ?? fallback;
+    return row({
+      iconName,
+      title,
+      text: t(`permissions.${key}.desc`),
+      on: current,
+      trailing: toggle(title, current, value => setSettings({ [key]: value })),
+      extra,
+    });
+  };
+  const trayStatus = h("span", { class: "status" });
+  bind(() => {
+    const tray = model.tray || { state: "off" };
+    const failed = tray.state === "failed";
+    const waiting = tray.state === "on" && tray.item && !tray.hosted;
+    trayStatus.className = "status" + (failed ? " bad" : "");
+    trayStatus.textContent = failed ? t("permissions.tray.failed") : waiting ? t("permissions.tray.noHost") : "";
+    trayStatus.hidden = model.settings.tray === false || (!failed && !waiting);
+  });
+  return h(
+    "div",
+    { class: "panel" },
+    option("tray", "keep", true, trayStatus),
+    option("background", "minimize", false),
+    option("unreadBadge", "app_badging", true)
   );
 }
 

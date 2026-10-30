@@ -36,6 +36,8 @@ class Preset:
     media: bool = False
     autoplay: bool = True
     drm: bool = False
+    # Closing the window keeps the app running in the tray (chat apps).
+    background: bool = False
     tagline: dict[str, str] = field(default_factory=dict)
     # Sites that moved: styles written for the old domain (Zen Internet
     # entries, uploaded userstyles) also apply under these URL prefixes.
@@ -87,6 +89,7 @@ PRESETS: dict[str, Preset] = {
             media=True,
             autoplay=True,
             drm=False,
+            background=True,
             tagline={"en": "Chat, voice and screen sharing."},
             # Midnight in the wallpaper's colours (render.PAGE_THEMES).
             theme="discord-midnight",
@@ -122,6 +125,7 @@ PRESETS: dict[str, Preset] = {
             media=True,
             autoplay=True,
             drm=False,
+            background=True,
             tagline={"en": "Messenger through Facebook's web messaging."},
             # messenger.com closed in April 2026 and redirects here.
             style_aliases={
@@ -163,6 +167,7 @@ PRESETS: dict[str, Preset] = {
             media=True,
             autoplay=True,
             drm=False,
+            background=True,
             tagline={"en": "Messages alongside your phone."},
         ),
         Preset(
@@ -178,6 +183,7 @@ PRESETS: dict[str, Preset] = {
             media=True,
             autoplay=True,
             drm=False,
+            background=True,
             tagline={"en": "Fast, cloud-based messaging."},
         ),
     )
