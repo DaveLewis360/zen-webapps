@@ -380,10 +380,6 @@ export class TrayService {
     this.state = { id, title, category, labels, badge, unread: { count: 0, more: false, dot: false }, visible: true, revision: 1 };
   }
 
-  get open() {
-    return !!this.#connection;
-  }
-
   open() {
     bind();
     if (current) {
